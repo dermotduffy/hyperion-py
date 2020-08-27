@@ -87,6 +87,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             len(writes),
             msg="Incorrect number of write calls",
         )
+        writer.method_calls = []
 
     def _verify_reader(self, reader):
         # The prepared responses should have been exhausted
@@ -417,19 +418,31 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         await hc._async_manage_connection_once()
         self.assertEqual(hc.sessions, sessions)
 
-    async def test_update_videomode(self):
+    async def test_videomode(self):
         """Test updating videomode."""
         (reader, writer, hc) = await self._create_and_test_basic_connected_client()
 
         videomode = "3DSBS"
 
-        videomode_command = {
+        videomode_set_command = {
+            "command": "videomode",
+            "videoMode": videomode,
+        }
+
+        videomode_update_command = {
             "command": "videomode-update",
             "data": {"videomode": videomode},
         }
 
         self.assertEqual(hc.videomode, "2D")
-        self._add_expected_reads(reader, reads=[json.dumps(videomode_command) + "\n"])
+        await hc.async_set_videomode(videomode)
+        self._verify_expected_writes(
+            writer, writes=[self._to_json_line(videomode_set_command)]
+        )
+
+        self._add_expected_reads(
+            reader, reads=[json.dumps(videomode_update_command) + "\n"]
+        )
         await hc._async_manage_connection_once()
         self.assertEqual(hc.videomode, videomode)
 

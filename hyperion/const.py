@@ -39,7 +39,10 @@ KEY_TOKEN = "token"
 KEY_UPDATE = "update"
 KEY_VALUE = "value"
 KEY_VIDEOMODE = "videomode"
+KEY_SET_VIDEOMODE = "videoMode"
 KEY_VISIBLE = "visible"
+
+KEY_VIDEOMODES = ["2D", "3DSBS", "3DTAB"]
 
 # ComponentIDs from: https://docs.hyperion-project.org/en/json/Control.html#components-ids-explained
 KEY_COMPONENTID = "componentId"
