@@ -43,6 +43,7 @@ KEY_UPDATE = "update"
 KEY_VALUE = "value"
 KEY_VIDEOMODE = "videomode"
 KEY_SET_VIDEOMODE = "videoMode"
+KEY_SOURCESELECT = "sourceselect"
 KEY_VISIBLE = "visible"
 
 KEY_VIDEOMODES = ["2D", "3DSBS", "3DTAB"]

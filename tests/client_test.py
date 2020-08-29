@@ -587,11 +587,11 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
     async def test_set_videomode(self):
         """Test setting videomode."""
         (reader, writer, hc) = await self._create_and_test_basic_connected_client()
-        videomode_in = {"command": "videomode", "videomode": "3DTAB"}
+        videomode_in = {"command": "videomode", "videoMode": "3DTAB"}
 
         await hc.async_set_videomode(**videomode_in)
         self._verify_expected_writes(writer, writes=[self._to_json_line(videomode_in)])
-        await hc.async_set_videomode(videomode="3DTAB")
+        await hc.async_set_videomode(videoMode="3DTAB")
         self._verify_expected_writes(writer, writes=[self._to_json_line(videomode_in)])
 
     async def test_set_component(self):
@@ -610,3 +610,17 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._verify_expected_writes(writer, writes=[self._to_json_line(component_in)])
         await hc.async_set_component(componentstate=componentstate)
         self._verify_expected_writes(writer, writes=[self._to_json_line(component_in)])
+
+    async def test_set_sourceselect(self):
+        """Test setting sourceselect."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        sourceselect_in = {"command": "sourceselect", "priority": 50}
+
+        await hc.async_set_sourceselect(**sourceselect_in)
+        self._verify_expected_writes(
+            writer, writes=[self._to_json_line(sourceselect_in)]
+        )
+        await hc.async_set_sourceselect(priority=50)
+        self._verify_expected_writes(
+            writer, writes=[self._to_json_line(sourceselect_in)]
+        )

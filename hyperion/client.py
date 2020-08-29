@@ -556,6 +556,11 @@ class HyperionClient:
             return
         self._serverinfo[const.KEY_PRIORITIES_AUTOSELECT] = priorities_autoselect
 
+    async def async_set_sourceselect(self, **kwargs):
+        """Request the sourceselect be set."""
+        data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_SOURCESELECT})
+        await self._async_send_json(data)
+
     # ================================================================================
     # ** Sessions **
     # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#sessions
