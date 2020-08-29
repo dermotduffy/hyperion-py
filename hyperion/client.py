@@ -11,7 +11,6 @@ _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.DEBUG)
 
 # TODO: Some way to get error messages from set calls.
-# TODO: Support callbacks.
 # TODO: Support auth calls (e.g. check if auth is required)
 
 
@@ -22,6 +21,8 @@ class HyperionClient:
         self,
         host: str,
         port: int,
+        default_callback: callable = None,
+        callbacks: list = None,
         token: str = None,
         instance: int = 0,
         origin: str = const.DEFAULT_ORIGIN,
@@ -31,6 +32,9 @@ class HyperionClient:
     ) -> None:
         """Initialize client."""
         _LOGGER.debug("HyperionClient initiated with: (%s:%i)", host, port)
+        self._default_callback = default_callback
+        self._callbacks = callbacks or {}
+
         self._host = host
         self._port = port
         self._token = token
@@ -285,6 +289,11 @@ class HyperionClient:
         ):
             self._update_leds(resp_json[const.KEY_DATA][const.KEY_LEDS])
 
+        if command in self._callbacks:
+            self._callbacks[command](resp_json)
+        elif self._default_callback is not None:
+            self._default_callback(resp_json)
+
     @property
     def is_connected(self):
         """Return server availability."""
@@ -459,7 +468,6 @@ class HyperionClient:
     # Set: https://docs.hyperion-project.org/en/json/Control.html#live-image-stream
     # ================================================================================
 
-    # TODO: Do something with the updates.
     async def async_image_stream_start(self, **kwargs):
         """Request a live image stream to start."""
         data = self._set_data(
@@ -580,7 +588,6 @@ class HyperionClient:
     # Set: https://docs.hyperion-project.org/en/json/Control.html#live-led-color-stream
     # ====================================================================================
 
-    # TODO: Do something with the updates.
     async def async_led_stream_start(self, **kwargs):
         """Request a live led stream to start."""
         data = self._set_data(

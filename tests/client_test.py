@@ -102,7 +102,9 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         """Tear down testcase."""
         pass
 
-    async def _create_and_test_basic_connected_client(self):
+    async def _create_and_test_basic_connected_client(
+        self, default_callback=None, callbacks=None
+    ):
         """Create a basic connected client object."""
         reader = self._create_mock_reader(filenames=[JSON_FILENAME_SERVERINFO_RESPONSE])
         writer = self._create_mock_writer()
@@ -110,7 +112,13 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         with asynctest.mock.patch(
             "asyncio.open_connection", return_value=(reader, writer)
         ):
-            hc = client.HyperionClient(TEST_HOST, TEST_PORT, loop=self.loop)
+            hc = client.HyperionClient(
+                TEST_HOST,
+                TEST_PORT,
+                loop=self.loop,
+                default_callback=default_callback,
+                callbacks=callbacks,
+            )
             self.assertTrue(await hc.async_connect())
 
         self._verify_reader(reader)
@@ -682,3 +690,44 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
         await hc.async_led_stream_stop()
         self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
+
+    async def test_callbacks(self):
+        """Test updating components."""
+        received_default_json = None
+        received_component_json = None
+
+        def default_callback(json):
+            nonlocal received_default_json
+            received_default_json = json
+
+        def component_callback(json):
+            nonlocal received_component_json
+            received_component_json = json
+
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client(
+            default_callback=default_callback,
+            callbacks={"components-update": component_callback},
+        )
+
+        # === Flip a component.
+        component = {
+            "command": "components-update",
+            "data": {"enabled": False, "name": "SMOOTHING"},
+        }
+
+        self._add_expected_reads(reader, reads=[json.dumps(component) + "\n"])
+        await hc._async_manage_connection_once()
+        self.assertIsNone(received_default_json)
+        self.assertEqual(received_component_json, component)
+
+        received_component_json = None
+
+        random_update = {
+            "command": "random-update",
+        }
+
+        self._add_expected_reads(reader, reads=[json.dumps(random_update) + "\n"])
+        await hc._async_manage_connection_once()
+
+        self.assertEqual(received_default_json, random_update)
+        self.assertIsNone(received_component_json)
