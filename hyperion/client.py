@@ -4,7 +4,6 @@
 import asyncio
 import json
 import logging
-import voluptuous as vol
 
 from hyperion import const
 
@@ -40,8 +39,6 @@ class HyperionClient:
         if loop is None:
             loop = asyncio.get_event_loop()
         self._loop = loop
-
-        self._register_api_calls()
 
     async def async_connect(self):
         """Connect to the Hyperion server."""
@@ -243,13 +240,11 @@ class HyperionClient:
             and const.KEY_DATA in resp_json
         ):
             self._update_effects(resp_json[const.KEY_DATA])
-        elif command == f"{const.KEY_PRIORITIES}-{const.KEY_UPDATE}":
-            if const.KEY_PRIORITIES in resp_json.get(const.KEY_DATA, {}):
-                self._update_priorities(resp_json[const.KEY_DATA][const.KEY_PRIORITIES])
-            if const.KEY_PRIORITIES_AUTOSELECT in resp_json.get(const.KEY_DATA, {}):
-                self._update_priorities_autoselect(
-                    resp_json[const.KEY_DATA][const.KEY_PRIORITIES_AUTOSELECT]
-                )
+        elif (
+            command == f"{const.KEY_PRIORITIES}-{const.KEY_UPDATE}"
+            and const.KEY_PRIORITIES in resp_json.get(const.KEY_DATA, {})
+        ):
+            self._update_priorities(resp_json[const.KEY_DATA][const.KEY_PRIORITIES])
         elif (
             command == f"{const.KEY_INSTANCE}-{const.KEY_UPDATE}"
             and const.KEY_DATA in resp_json
@@ -349,6 +344,17 @@ class HyperionClient:
                 return False
         return True
 
+    def _update_priorities(self, priorities):
+        """Update priorites."""
+        if self._serverinfo is None or type(priorities) != list:
+            return
+        self._serverinfo[const.KEY_PRIORITIES] = priorities
+
+    @property
+    def priorities(self):
+        """Return priorites."""
+        return self._get_serverinfo_value(const.KEY_PRIORITIES)
+
     @property
     def visible_priority(self):
         """Return the visible priority, if any."""
@@ -361,74 +367,101 @@ class HyperionClient:
                 return priority
         return None
 
-    def _register_api_calls(self):
-        def add_api_functions(api_name, key, schema, get_command):
-            def _accessor(self, key):
-                return self._get_serverinfo_value(key)
+    def _update_adjustment(self, adjustment):
+        """Update adjustment."""
+        if (
+            self._serverinfo is None
+            or type(adjustment) != list
+            or len(adjustment) != 1
+            or type(adjustment[0]) != dict
+        ):
+            return
+        self._serverinfo[const.KEY_ADJUSTMENT] = adjustment
 
-            async def _async_setter(self, schema, get_command, data):
-                try:
-                    if schema(data):
-                        await self._async_send_json(get_command(data))
-                except vol.Error:
-                    logging.warning(
-                        "Attempt to set invalid value for '%s': %s", key, data
-                    )
+    @property
+    def adjustment(self):
+        """Return adjustment."""
+        return self._get_serverinfo_value(const.KEY_ADJUSTMENT)
 
-            def _updater(self, schema, key, value):
-                logging.error(
-                    "schema %s, value %s %s", repr(schema), type(value), repr(value)
-                )
-                try:
-                    if self._serverinfo:
-                        self._serverinfo[key] = schema(value)
-                except vol.Error:
-                    logging.warning("Invalid value received for '%s': %s", key, value)
+    def _update_effects(self, effects):
+        """Update effects."""
+        if self._serverinfo is None or type(effects) != list:
+            return
+        self._serverinfo[const.KEY_EFFECTS] = effects
 
-            setattr(
-                self.__class__, api_name, property(lambda self: _accessor(self, key))
-            )
-            setattr(
-                self.__class__,
-                "_update_" + api_name,
-                lambda self, value: _updater(self, schema, key, value),
-            )
-            if get_command:
-                setattr(
-                    self.__class__,
-                    "async_set_" + api_name,
-                    lambda self, data: _async_setter(self, schema, get_command, data),
-                )
+    @property
+    def effects(self):
+        """Return effects."""
+        return self._get_serverinfo_value(const.KEY_EFFECTS)
 
-        api = [
-            (
-                const.KEY_VIDEOMODE,
-                const.KEY_VIDEOMODE,
-                vol.Schema(vol.In(const.KEY_VIDEOMODES)),
-                lambda data: {
-                    const.KEY_COMMAND: const.KEY_VIDEOMODE,
-                    const.KEY_SET_VIDEOMODE: data,
-                },
-            ),
-            (const.KEY_LEDS, const.KEY_LEDS, vol.Schema(list), None,),
-            (const.KEY_SESSIONS, const.KEY_SESSIONS, vol.Schema(list), None,),
-            (
-                const.KEY_LED_MAPPING_API_NAME,
-                const.KEY_LED_MAPPING_TYPE,
-                vol.Schema(str),
-                None,
-            ),
-            (const.KEY_INSTANCE_API_NAME, const.KEY_INSTANCE, vol.Schema(list), None,),
-            (const.KEY_EFFECTS, const.KEY_EFFECTS, vol.Schema(list), None,),
-            (const.KEY_ADJUSTMENT, const.KEY_ADJUSTMENT, vol.Schema([dict]), None,),
-            (const.KEY_PRIORITIES, const.KEY_PRIORITIES, vol.Schema([]), None,),
-            (
-                const.KEY_PRIORITIES_AUTOSELECT,
-                const.KEY_PRIORITIES_AUTOSELECT,
-                vol.Schema(bool),
-                None,
-            ),
-        ]
+    def _update_instances(self, instances):
+        """Update instances."""
+        if self._serverinfo is None or type(instances) != list:
+            return
+        self._serverinfo[const.KEY_INSTANCE] = instances
 
-        for api_name, key, schema, get_command in api:
-            add_api_functions(api_name, key, schema, get_command)
+    @property
+    def instances(self):
+        """Return instances."""
+        return self._get_serverinfo_value(const.KEY_INSTANCE)
+
+    @property
+    def led_mapping_type(self):
+        """Return LED mapping type."""
+        return self._get_serverinfo_value(const.KEY_LED_MAPPING_TYPE)
+
+    def _update_led_mapping_type(self, led_mapping_type):
+        """Update LED mapping  type."""
+        if self._serverinfo is None or type(led_mapping_type) != str:
+            return
+        self._serverinfo[const.KEY_LED_MAPPING_TYPE] = led_mapping_type
+
+    @property
+    def sessions(self):
+        """Return sessions."""
+        return self._get_serverinfo_value(const.KEY_SESSIONS)
+
+    def _update_sessions(self, sessions):
+        """Update sessions."""
+        if self._serverinfo is None or type(sessions) != list:
+            return
+        self._serverinfo[const.KEY_SESSIONS] = sessions
+
+    @property
+    def videomode(self):
+        """Return videomode."""
+        return self._get_serverinfo_value(const.KEY_VIDEOMODE)
+
+    def _get_videomode_command(self, videomode):
+        """Get the videomode command data."""
+        return {
+            const.KEY_COMMAND: const.KEY_VIDEOMODE,
+            const.KEY_SET_VIDEOMODE: videomode,
+        }
+
+    async def async_set_videomode(self, videomode):
+        """Request that the videomode be set."""
+        if self._validate_videomode(videomode):
+            await self._async_send_json(self._get_videomode_command(videomode))
+
+    def _validate_videomode(self, videomode):
+        if self._serverinfo is None or videomode not in const.KEY_VIDEOMODES:
+            logging.warning("Invalid videomode parameter: %s", videomode)
+            return False
+        return True
+
+    def _update_videomode(self, videomode):
+        """Update videomode."""
+        if self._validate_videomode(videomode):
+            self._serverinfo[const.KEY_VIDEOMODE] = videomode
+
+    @property
+    def leds(self):
+        """Return LEDs."""
+        return self._get_serverinfo_value(const.KEY_LEDS)
+
+    def _update_leds(self, leds):
+        """Update LEDs."""
+        if self._serverinfo is None or type(leds) != list:
+            return
+        self._serverinfo[const.KEY_LEDS] = leds
