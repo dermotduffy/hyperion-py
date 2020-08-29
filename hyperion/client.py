@@ -322,6 +322,16 @@ class HyperionClient:
         self._serverinfo[const.KEY_ADJUSTMENT] = adjustment
 
     # =====================================================================
+    # ** Clear **
+    # Set: https://docs.hyperion-project.org/en/json/Control.html#clear
+    # =====================================================================
+
+    async def async_clear(self, **kwargs):
+        """Request that a priority be cleared."""
+        data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_CLEAR})
+        await self._async_send_json(data)
+
+    # =====================================================================
     # ** Color **
     # Set: https://docs.hyperion-project.org/en/json/Control.html#set-color
     # =====================================================================

@@ -552,3 +552,16 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
 
         await hc.async_set_image(**image_in)
         self._verify_expected_writes(writer, writes=[self._to_json_line(image_out)])
+
+    async def test_clear(self):
+        """Test clearing priorities."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        clear_in = {
+            "command": "clear",
+            "priority": 50,
+        }
+
+        await hc.async_clear(**clear_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(clear_in)])
+        await hc.async_clear(priority=50)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(clear_in)])
