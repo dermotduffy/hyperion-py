@@ -427,21 +427,12 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
 
         videomode = "3DSBS"
 
-        videomode_set_command = {
-            "command": "videomode",
-            "videoMode": videomode,
-        }
-
         videomode_update_command = {
             "command": "videomode-update",
             "data": {"videomode": videomode},
         }
 
         self.assertEqual(hc.videomode, "2D")
-        await hc.async_set_videomode(videomode)
-        self._verify_expected_writes(
-            writer, writes=[self._to_json_line(videomode_set_command)]
-        )
 
         self._add_expected_reads(
             reader, reads=[json.dumps(videomode_update_command) + "\n"]
@@ -592,3 +583,13 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._verify_expected_writes(
             writer, writes=[self._to_json_line(led_mapping_type_in)]
         )
+
+    async def test_set_videomode(self):
+        """Test setting videomode."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        videomode_in = {"command": "videomode", "videomode": "3DTAB"}
+
+        await hc.async_set_videomode(**videomode_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(videomode_in)])
+        await hc.async_set_videomode(videomode="3DTAB")
+        self._verify_expected_writes(writer, writes=[self._to_json_line(videomode_in)])

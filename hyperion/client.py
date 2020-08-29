@@ -598,18 +598,12 @@ class HyperionClient:
         """Return videomode."""
         return self._get_serverinfo_value(const.KEY_VIDEOMODE)
 
-    def _get_videomode_command(self, videomode):
-        """Get the videomode command data."""
-        return {
-            const.KEY_COMMAND: const.KEY_VIDEOMODE,
-            const.KEY_SET_VIDEOMODE: videomode,
-        }
-
-    async def async_set_videomode(self, videomode):
-        """Request that the videomode be set."""
-        await self._async_send_json(self._get_videomode_command(videomode))
-
     def _update_videomode(self, videomode):
         """Update videomode."""
         if self._serverinfo:
             self._serverinfo[const.KEY_VIDEOMODE] = videomode
+
+    async def async_set_videomode(self, **kwargs):
+        """Request the LED mapping type be set."""
+        data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_VIDEOMODE})
+        await self._async_send_json(data)
