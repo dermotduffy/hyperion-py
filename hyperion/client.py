@@ -241,11 +241,13 @@ class HyperionClient:
             and const.KEY_DATA in resp_json
         ):
             self._update_effects(resp_json[const.KEY_DATA])
-        elif (
-            command == f"{const.KEY_PRIORITIES}-{const.KEY_UPDATE}"
-            and const.KEY_PRIORITIES in resp_json.get(const.KEY_DATA, {})
-        ):
-            self._update_priorities(resp_json[const.KEY_DATA][const.KEY_PRIORITIES])
+        elif command == f"{const.KEY_PRIORITIES}-{const.KEY_UPDATE}":
+            if const.KEY_PRIORITIES in resp_json.get(const.KEY_DATA, {}):
+                self._update_priorities(resp_json[const.KEY_DATA][const.KEY_PRIORITIES])
+            if const.KEY_PRIORITIES_AUTOSELECT in resp_json.get(const.KEY_DATA, {}):
+                self._update_priorities_autoselect(
+                    resp_json[const.KEY_DATA][const.KEY_PRIORITIES_AUTOSELECT]
+                )
         elif (
             command == f"{const.KEY_INSTANCE}-{const.KEY_UPDATE}"
             and const.KEY_DATA in resp_json
@@ -444,6 +446,21 @@ class HyperionClient:
             if priority.get(const.KEY_VISIBLE, False):
                 return priority
         return None
+
+    # ==========================
+    # ** Priorites Autoselect **
+    # ==========================
+
+    def _update_priorities_autoselect(self, priorities_autoselect):
+        """Update priorites."""
+        if self._serverinfo is None or type(priorities_autoselect) != bool:
+            return
+        self._serverinfo[const.KEY_PRIORITIES_AUTOSELECT] = priorities_autoselect
+
+    @property
+    def priorities_autoselect(self):
+        """Return priorites."""
+        return self._get_serverinfo_value(const.KEY_PRIORITIES_AUTOSELECT)
 
     # ==============
     # ** Sessions **
