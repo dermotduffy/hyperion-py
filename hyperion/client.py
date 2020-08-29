@@ -416,6 +416,20 @@ class HyperionClient:
         await self._async_send_json(data)
 
     # =================================================================================
+    # ** Image **
+    # Set: https://docs.hyperion-project.org/en/json/Control.html#set-image
+    # =================================================================================
+
+    async def async_set_image(self, **kwargs):
+        """Request that an image be set."""
+        data = self._set_data(
+            kwargs,
+            hard={const.KEY_COMMAND: const.KEY_IMAGE},
+            soft={const.KEY_ORIGIN: self._origin},
+        )
+        await self._async_send_json(data)
+
+    # =================================================================================
     # ** Instances **
     # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#instance
     # Update: https://docs.hyperion-project.org/en/json/Subscribe.html#instance-updates

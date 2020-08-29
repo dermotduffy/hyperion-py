@@ -515,3 +515,40 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
 
         await hc.async_set_effect(**effect_in)
         self._verify_expected_writes(writer, writes=[self._to_json_line(effect_out)])
+
+    async def test_image(self):
+        """Test controlling image."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        image_in = {
+            "command": "image",
+            "imagedata": "VGhpcyBpcyBubyBpbWFnZSEgOik=",
+            "name": "Name of Image",
+            "format": "auto",
+            "priority": 50,
+            "duration": 5000,
+            "origin": "My Fancy App",
+        }
+
+        await hc.async_set_image(**image_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(image_in)])
+
+        image_in = {
+            "imagedata": "VGhpcyBpcyBubyBpbWFnZSEgOik=",
+            "name": "Name of Image",
+            "format": "auto",
+            "priority": 50,
+            "duration": 5000,
+        }
+
+        image_out = {
+            "command": "image",
+            "imagedata": "VGhpcyBpcyBubyBpbWFnZSEgOik=",
+            "name": "Name of Image",
+            "format": "auto",
+            "priority": 50,
+            "duration": 5000,
+            "origin": const.DEFAULT_ORIGIN,
+        }
+
+        await hc.async_set_image(**image_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(image_out)])
