@@ -232,7 +232,7 @@ class HyperionClient:
             command == f"{const.KEY_COMPONENTS}-{const.KEY_UPDATE}"
             and const.KEY_DATA in resp_json
         ):
-            self._update_components(resp_json[const.KEY_DATA])
+            self._update_component(resp_json[const.KEY_DATA])
         elif (
             command == f"{const.KEY_ADJUSTMENT}-{const.KEY_UPDATE}"
             and const.KEY_DATA in resp_json
@@ -299,6 +299,33 @@ class HyperionClient:
         """Update full Hyperion state."""
         self._serverinfo = state
 
+    def _update_component(self, new_component):
+        """Update full Hyperion state."""
+        if (
+            self._serverinfo is None
+            or type(new_component) != dict
+            or const.KEY_NAME not in new_component
+        ):
+            return
+        new_components = self._serverinfo.get(const.KEY_COMPONENTS, [])
+        for component in new_components:
+            if (
+                const.KEY_NAME not in component
+                or component[const.KEY_NAME] != new_component[const.KEY_NAME]
+            ):
+                continue
+            # Update component in place.
+            component.clear()
+            component.update(new_component)
+            break
+        else:
+            new_components.append(new_component)
+
+    @property
+    def components(self):
+        """Return components."""
+        return self._get_serverinfo_value(const.KEY_COMPONENTS)
+
     def is_on(
         self, components=[const.KEY_COMPONENTID_ALL, const.KEY_COMPONENTID_LEDDEVICE]
     ):
@@ -335,129 +362,73 @@ class HyperionClient:
         return None
 
     def _register_api_calls(self):
+        def add_api_functions(api_name, key, schema, get_command):
+            def _accessor(self, key):
+                return self._get_serverinfo_value(key)
+
+            async def _async_setter(self, schema, get_command, data):
+                try:
+                    if schema(data):
+                        await self._async_send_json(get_command(data))
+                except vol.Error:
+                    logging.warning(
+                        "Attempt to set invalid value for '%s': %s", key, data
+                    )
+
+            def _updater(self, schema, key, value):
+                logging.error(
+                    "schema %s, value %s %s", repr(schema), type(value), repr(value)
+                )
+                try:
+                    if self._serverinfo:
+                        self._serverinfo[key] = schema(value)
+                except vol.Error:
+                    logging.warning("Invalid value received for '%s': %s", key, value)
+
+            setattr(
+                self.__class__, api_name, property(lambda self: _accessor(self, key))
+            )
+            setattr(
+                self.__class__,
+                "_update_" + api_name,
+                lambda self, value: _updater(self, schema, key, value),
+            )
+            if get_command:
+                setattr(
+                    self.__class__,
+                    "async_set_" + api_name,
+                    lambda self, data: _async_setter(self, schema, get_command, data),
+                )
+
         api = [
-            API_Set(
-                self,
+            (
                 const.KEY_VIDEOMODE,
-                schema=vol.Schema(vol.In(const.KEY_VIDEOMODES)),
-                set_command=lambda data: {
+                const.KEY_VIDEOMODE,
+                vol.Schema(vol.In(const.KEY_VIDEOMODES)),
+                lambda data: {
                     const.KEY_COMMAND: const.KEY_VIDEOMODE,
                     const.KEY_SET_VIDEOMODE: data,
                 },
             ),
-            API_Set(self, const.KEY_LEDS, schema=vol.Schema(list)),
-            API_Set(self, const.KEY_SESSIONS, schema=vol.Schema(list)),
-            API_Set(
-                self,
-                api_name=const.KEY_LED_MAPPING_API_NAME,
-                key_name=const.KEY_LED_MAPPING_TYPE,
-                schema=vol.Schema(str),
+            (const.KEY_LEDS, const.KEY_LEDS, vol.Schema(list), None,),
+            (const.KEY_SESSIONS, const.KEY_SESSIONS, vol.Schema(list), None,),
+            (
+                const.KEY_LED_MAPPING_API_NAME,
+                const.KEY_LED_MAPPING_TYPE,
+                vol.Schema(str),
+                None,
             ),
-            API_Set(
-                self,
-                const.KEY_INSTANCE_API_NAME,
-                key_name=const.KEY_INSTANCE,
-                schema=vol.Schema(list),
-            ),
-            API_Set(self, const.KEY_EFFECTS, schema=vol.Schema(list)),
-            API_Set(self, const.KEY_ADJUSTMENT, schema=vol.Schema([dict])),
-            API_Set(self, const.KEY_PRIORITIES, schema=vol.Schema([])),
-            API_Set(self, const.KEY_PRIORITIES_AUTOSELECT, schema=vol.Schema(bool)),
-            Component_API_Set(
-                self,
-                const.KEY_COMPONENTS,
-                schema=vol.Schema({const.KEY_ENABLED: bool, const.KEY_NAME: str}),
+            (const.KEY_INSTANCE_API_NAME, const.KEY_INSTANCE, vol.Schema(list), None,),
+            (const.KEY_EFFECTS, const.KEY_EFFECTS, vol.Schema(list), None,),
+            (const.KEY_ADJUSTMENT, const.KEY_ADJUSTMENT, vol.Schema([dict]), None,),
+            (const.KEY_PRIORITIES, const.KEY_PRIORITIES, vol.Schema([]), None,),
+            (
+                const.KEY_PRIORITIES_AUTOSELECT,
+                const.KEY_PRIORITIES_AUTOSELECT,
+                vol.Schema(bool),
+                None,
             ),
         ]
 
-        for api_set in api:
-            api_set.register()
-
-
-class API_Set:
-    """API endpoint set."""
-
-    def __init__(self, client, api_name, key_name=None, schema=None, set_command=None):
-        """Initialize API endpoint set."""
-        self._client = client
-        self._api_name = api_name
-        self._key_name = key_name or api_name
-        self._schema = schema
-        self._set_command = set_command
-
-    def register(self):
-        """Register the API endpoints with the client class."""
-        setattr(
-            self._client.__class__, self._api_name, property(lambda _: self._accessor())
-        )
-        setattr(
-            self._client.__class__,
-            "_update_" + self._api_name,
-            lambda _, value: self._updater(value),
-        )
-        if self._set_command:
-            setattr(
-                self._client.__class__,
-                "async_set_" + self._api_name,
-                lambda _, value: self._async_setter(value),
-            )
-
-    def _accessor(self):
-        """Access the  data."""
-        return self._client._get_serverinfo_value(self._key_name)
-
-    async def _async_setter(self, value):
-        """Async set the data."""
-        try:
-            if self._schema and self._schema(value):
-                await self._client._async_send_json(self._set_command(value))
-        except vol.Error:
-            logging.warning(
-                "Attempt to set invalid value for '%s': %s", self._key_name, value
-            )
-
-    def _updater(self, value):
-        """Subscription updater."""
-        logging.error(
-            "schema %s, value %s %s", repr(self._schema), type(value), repr(value)
-        )
-        try:
-            if self._client._serverinfo:
-                if self._schema:
-                    value = self._schema(value)
-                self._client._serverinfo[self._key_name] = value
-        except vol.Error:
-            logging.warning(
-                "Invalid value received for '%s': %s", self._key_name, value
-            )
-
-
-class Component_API_Set(API_Set):
-    """Specialized API set to cope with component incremental updates."""
-
-    def __init__(self, client, api_name, key_name=None, schema=None, set_command=None):
-        """Construct Component API Set."""
-        super().__init__(
-            client, api_name, key_name=key_name, schema=schema, set_command=set_command
-        )
-
-    def _updater(self, incremental_component):
-        """Update the components with an incremental update."""
-        if not self._client._serverinfo:
-            return
-        if self._schema:
-            incremental_component = self._schema(incremental_component)
-        logging.error("moo: %s", str(incremental_component))
-        new_components = self._client._serverinfo.get(const.KEY_COMPONENTS, [])
-        for component in new_components:
-            if (
-                const.KEY_NAME not in component
-                or component[const.KEY_NAME] != incremental_component[const.KEY_NAME]
-            ):
-                continue
-            # Update component in place.
-            component.clear()
-            component.update(incremental_component)
-            break
-        else:
-            new_components.append(incremental_component)
+        for api_name, key, schema, get_command in api:
+            add_api_functions(api_name, key, schema, get_command)
