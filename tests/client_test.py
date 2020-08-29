@@ -624,3 +624,27 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._verify_expected_writes(
             writer, writes=[self._to_json_line(sourceselect_in)]
         )
+
+    async def test_start_stop_switch_instance(self):
+        """Test setting sourceselect."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        start_in = {"command": "instance", "subcommand": "startInstance", "instance": 1}
+
+        await hc.async_start_instance(**start_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
+        await hc.async_start_instance(instance=1)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
+
+        stop_in = {"command": "instance", "subcommand": "stopInstance", "instance": 1}
+
+        await hc.async_stop_instance(**stop_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
+        await hc.async_stop_instance(instance=1)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
+
+        switch_in = {"command": "instance", "subcommand": "switchTo", "instance": 1}
+
+        await hc.async_switch_instance(**switch_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(switch_in)])
+        await hc.async_switch_instance(instance=1)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(switch_in)])

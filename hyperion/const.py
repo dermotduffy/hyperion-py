@@ -44,6 +44,8 @@ KEY_VALUE = "value"
 KEY_VIDEOMODE = "videomode"
 KEY_SET_VIDEOMODE = "videoMode"
 KEY_SOURCESELECT = "sourceselect"
+KEY_START_INSTANCE = "startInstance"
+KEY_STOP_INSTANCE = "stopInstance"
 KEY_VISIBLE = "visible"
 
 KEY_VIDEOMODES = ["2D", "3DSBS", "3DTAB"]

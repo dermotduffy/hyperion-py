@@ -469,6 +469,40 @@ class HyperionClient:
             return
         self._serverinfo[const.KEY_INSTANCE] = instances
 
+    async def async_start_instance(self, **kwargs):
+        """Start an instance."""
+        data = self._set_data(
+            kwargs,
+            hard={
+                const.KEY_COMMAND: const.KEY_INSTANCE,
+                const.KEY_SUBCOMMAND: const.KEY_START_INSTANCE,
+            },
+        )
+        await self._async_send_json(data)
+
+    async def async_stop_instance(self, **kwargs):
+        """Stop an instance."""
+        data = self._set_data(
+            kwargs,
+            hard={
+                const.KEY_COMMAND: const.KEY_INSTANCE,
+                const.KEY_SUBCOMMAND: const.KEY_STOP_INSTANCE,
+            },
+        )
+        await self._async_send_json(data)
+
+    # TODO: Do I have to issue a fresh serverinfo call if this is executed...
+    async def async_switch_instance(self, **kwargs):
+        """Stop an instance."""
+        data = self._set_data(
+            kwargs,
+            hard={
+                const.KEY_COMMAND: const.KEY_INSTANCE,
+                const.KEY_SUBCOMMAND: const.KEY_SWITCH_TO,
+            },
+        )
+        await self._async_send_json(data)
+
     # =============================================================================
     # ** LEDs **
     # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#leds
