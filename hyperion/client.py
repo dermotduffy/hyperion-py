@@ -55,7 +55,9 @@ class HyperionClient:
             return False
 
         _LOGGER.debug(
-            "Connected to Hyperion server: (%s:%i)", self._host, self._port,
+            "Connected to Hyperion server: (%s:%i)",
+            self._host,
+            self._port,
         )
 
         # == Request: authorize ==
@@ -218,7 +220,7 @@ class HyperionClient:
                 return
 
         resp_json = await self._async_safely_read_command()
-        if not resp_json:
+        if not resp_json or not self._serverinfo:
             return
         command = resp_json[const.KEY_COMMAND]
 
@@ -293,8 +295,7 @@ class HyperionClient:
     def _update_adjustment(self, adjustment):
         """Update adjustment."""
         if (
-            self._serverinfo is None
-            or type(adjustment) != list
+            type(adjustment) != list
             or len(adjustment) != 1
             or type(adjustment[0]) != dict
         ):
@@ -312,11 +313,7 @@ class HyperionClient:
 
     def _update_component(self, new_component):
         """Update full Hyperion state."""
-        if (
-            self._serverinfo is None
-            or type(new_component) != dict
-            or const.KEY_NAME not in new_component
-        ):
+        if type(new_component) != dict or const.KEY_NAME not in new_component:
             return
         new_components = self._serverinfo.get(const.KEY_COMPONENTS, [])
         for component in new_components:
@@ -366,7 +363,7 @@ class HyperionClient:
 
     def _update_effects(self, effects):
         """Update effects."""
-        if self._serverinfo is None or type(effects) != list:
+        if type(effects) != list:
             return
         self._serverinfo[const.KEY_EFFECTS] = effects
 
@@ -381,7 +378,7 @@ class HyperionClient:
 
     def _update_instances(self, instances):
         """Update instances."""
-        if self._serverinfo is None or type(instances) != list:
+        if type(instances) != list:
             return
         self._serverinfo[const.KEY_INSTANCE] = instances
 
@@ -401,7 +398,7 @@ class HyperionClient:
 
     def _update_leds(self, leds):
         """Update LEDs."""
-        if self._serverinfo is None or type(leds) != list:
+        if type(leds) != list:
             return
         self._serverinfo[const.KEY_LEDS] = leds
 
@@ -416,7 +413,7 @@ class HyperionClient:
 
     def _update_led_mapping_type(self, led_mapping_type):
         """Update LED mapping  type."""
-        if self._serverinfo is None or type(led_mapping_type) != str:
+        if type(led_mapping_type) != str:
             return
         self._serverinfo[const.KEY_LED_MAPPING_TYPE] = led_mapping_type
 
@@ -426,7 +423,7 @@ class HyperionClient:
 
     def _update_priorities(self, priorities):
         """Update priorites."""
-        if self._serverinfo is None or type(priorities) != list:
+        if type(priorities) != list:
             return
         self._serverinfo[const.KEY_PRIORITIES] = priorities
 
@@ -453,7 +450,7 @@ class HyperionClient:
 
     def _update_priorities_autoselect(self, priorities_autoselect):
         """Update priorites."""
-        if self._serverinfo is None or type(priorities_autoselect) != bool:
+        if type(priorities_autoselect) != bool:
             return
         self._serverinfo[const.KEY_PRIORITIES_AUTOSELECT] = priorities_autoselect
 
@@ -473,7 +470,7 @@ class HyperionClient:
 
     def _update_sessions(self, sessions):
         """Update sessions."""
-        if self._serverinfo is None or type(sessions) != list:
+        if type(sessions) != list:
             return
         self._serverinfo[const.KEY_SESSIONS] = sessions
 
