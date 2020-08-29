@@ -10,6 +10,8 @@ from hyperion import const
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.DEBUG)
 
+# TODO: Some way to get error messages from set calls.
+
 
 class HyperionClient:
     """Hyperion Client."""
@@ -20,6 +22,7 @@ class HyperionClient:
         port: int,
         token: str = None,
         instance: int = 0,
+        origin: str = const.DEFAULT_ORIGIN,
         timeout_secs: int = const.DEFAULT_CONNECTION_TIMEOUT_SECS,
         retry_secs=const.DEFAULT_CONNECTION_RETRY_DELAY,
         loop=None,
@@ -30,6 +33,7 @@ class HyperionClient:
         self._port = port
         self._token = token
         self._instance = instance
+        self._origin = origin
         self._timeout_secs = timeout_secs
         self._retry_secs = retry_secs
         self._is_connected = False
@@ -153,7 +157,7 @@ class HyperionClient:
     async def _async_send_json(self, request):
         """Send JSON to the server."""
         _LOGGER.debug("Send to server (%s:%i): %s", self._host, self._port, request)
-        output = json.dumps(request).encode("UTF-8") + b"\n"
+        output = json.dumps(request, sort_keys=True).encode("UTF-8") + b"\n"
         self._writer.write(output)
         await self._writer.drain()
 
@@ -284,6 +288,16 @@ class HyperionClient:
         """Return server availability."""
         return self._is_connected
 
+    # ==================
+    # || Helper calls ||
+    # ==================
+
+    def _set_data(self, data, hard=None, soft=None):
+        output = soft or {}
+        output.update(data)
+        output.update(hard or {})
+        return output
+
     # ====================
     # || Data API calls ||
     # ====================
@@ -306,6 +320,20 @@ class HyperionClient:
     def adjustment(self):
         """Return adjustment."""
         return self._get_serverinfo_value(const.KEY_ADJUSTMENT)
+
+    # =====================================================================
+    # ** Color **
+    # Set: https://docs.hyperion-project.org/en/json/Control.html#set-color
+    # =====================================================================
+
+    async def async_set_color(self, **kwargs):
+        """Request that the videomode be set."""
+        data = self._set_data(
+            kwargs,
+            hard={const.KEY_COMMAND: const.KEY_COLOR},
+            soft={const.KEY_ORIGIN: self._origin},
+        )
+        await self._async_send_json(data)
 
     # ===============
     # ** Component **
@@ -511,16 +539,9 @@ class HyperionClient:
 
     async def async_set_videomode(self, videomode):
         """Request that the videomode be set."""
-        if self._validate_videomode(videomode):
-            await self._async_send_json(self._get_videomode_command(videomode))
-
-    def _validate_videomode(self, videomode):
-        if self._serverinfo is None or videomode not in const.KEY_VIDEOMODES:
-            logging.warning("Invalid videomode parameter: %s", videomode)
-            return False
-        return True
+        await self._async_send_json(self._get_videomode_command(videomode))
 
     def _update_videomode(self, videomode):
         """Update videomode."""
-        if self._validate_videomode(videomode):
+        if self._serverinfo:
             self._serverinfo[const.KEY_VIDEOMODE] = videomode

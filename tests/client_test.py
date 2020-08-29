@@ -126,7 +126,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
 
     def _to_json_line(self, data):
         """Convert data to an encoded JSON string."""
-        return (json.dumps(data) + "\n").encode("UTF-8")
+        return (json.dumps(data, sort_keys=True) + "\n").encode("UTF-8")
 
     async def test_async_connect_authorized(self):
         """Test server connection with authorization."""
@@ -164,8 +164,8 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         """Test server connection to specified instance."""
         instance_request = {
             "command": "instance",
-            "subcommand": "switchTo",
             "instance": TEST_INSTANCE,
+            "subcommand": "switchTo",
         }
         instance_response = {
             "command": "instance-switchTo",
@@ -461,3 +461,30 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._add_expected_reads(reader, reads=[json.dumps(leds_command) + "\n"])
         await hc._async_manage_connection_once()
         self.assertEqual(hc.leds, leds)
+
+    async def test_color(self):
+        """Test controlling color."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        color_in = {
+            "color": [0, 0, 255],
+            "command": "color",
+            "origin": "My Fancy App",
+            "priority": 50,
+        }
+
+        await hc.async_set_color(**color_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(color_in)])
+
+        color_in = {
+            "color": [0, 0, 255],
+            "priority": 50,
+        }
+        color_out = {
+            "command": "color",
+            "color": [0, 0, 255],
+            "priority": 50,
+            "origin": const.DEFAULT_ORIGIN,
+        }
+
+        await hc.async_set_color(**color_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(color_out)])
