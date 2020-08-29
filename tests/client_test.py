@@ -593,3 +593,20 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._verify_expected_writes(writer, writes=[self._to_json_line(videomode_in)])
         await hc.async_set_videomode(videomode="3DTAB")
         self._verify_expected_writes(writer, writes=[self._to_json_line(videomode_in)])
+
+    async def test_set_component(self):
+        """Test setting component."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        componentstate = {
+            "component": "LEDDEVICE",
+            "state": False,
+        }
+        component_in = {
+            "command": "componentstate",
+            "componentstate": componentstate,
+        }
+
+        await hc.async_set_component(**component_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(component_in)])
+        await hc.async_set_component(componentstate=componentstate)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(component_in)])

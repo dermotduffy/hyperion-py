@@ -380,6 +380,13 @@ class HyperionClient:
         else:
             new_components.append(new_component)
 
+    async def async_set_component(self, **kwargs):
+        """Request that a color be set."""
+        data = self._set_data(
+            kwargs, hard={const.KEY_COMMAND: const.KEY_COMPONENTSTATE}
+        )
+        await self._async_send_json(data)
+
     def is_on(
         self, components=[const.KEY_COMPONENTID_ALL, const.KEY_COMPONENTID_LEDDEVICE]
     ):
