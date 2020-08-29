@@ -306,6 +306,11 @@ class HyperionClient:
     # ** Adjustment **
     # ================
 
+    @property
+    def adjustment(self):
+        """Return adjustment."""
+        return self._get_serverinfo_value(const.KEY_ADJUSTMENT)
+
     def _update_adjustment(self, adjustment):
         """Update adjustment."""
         if (
@@ -315,11 +320,6 @@ class HyperionClient:
         ):
             return
         self._serverinfo[const.KEY_ADJUSTMENT] = adjustment
-
-    @property
-    def adjustment(self):
-        """Return adjustment."""
-        return self._get_serverinfo_value(const.KEY_ADJUSTMENT)
 
     # =====================================================================
     # ** Color **
@@ -342,6 +342,11 @@ class HyperionClient:
     # Set: https://docs.hyperion-project.org/en/json/Control.html#control-components
     # ==================================================================================
 
+    @property
+    def components(self):
+        """Return components."""
+        return self._get_serverinfo_value(const.KEY_COMPONENTS)
+
     def _update_component(self, new_component):
         """Update full Hyperion state."""
         if type(new_component) != dict or const.KEY_NAME not in new_component:
@@ -359,11 +364,6 @@ class HyperionClient:
             break
         else:
             new_components.append(new_component)
-
-    @property
-    def components(self):
-        """Return components."""
-        return self._get_serverinfo_value(const.KEY_COMPONENTS)
 
     def is_on(
         self, components=[const.KEY_COMPONENTID_ALL, const.KEY_COMPONENTID_LEDDEVICE]
@@ -395,16 +395,16 @@ class HyperionClient:
     # Set: https://docs.hyperion-project.org/en/json/Control.html#set-effect
     # ==================================================================================
 
+    @property
+    def effects(self):
+        """Return effects."""
+        return self._get_serverinfo_value(const.KEY_EFFECTS)
+
     def _update_effects(self, effects):
         """Update effects."""
         if type(effects) != list:
             return
         self._serverinfo[const.KEY_EFFECTS] = effects
-
-    @property
-    def effects(self):
-        """Return effects."""
-        return self._get_serverinfo_value(const.KEY_EFFECTS)
 
     # =================================================================================
     # ** Instances **
@@ -413,16 +413,16 @@ class HyperionClient:
     # Set: https://docs.hyperion-project.org/en/json/Control.html#control-instances
     # =================================================================================
 
+    @property
+    def instances(self):
+        """Return instances."""
+        return self._get_serverinfo_value(const.KEY_INSTANCE)
+
     def _update_instances(self, instances):
         """Update instances."""
         if type(instances) != list:
             return
         self._serverinfo[const.KEY_INSTANCE] = instances
-
-    @property
-    def instances(self):
-        """Return instances."""
-        return self._get_serverinfo_value(const.KEY_INSTANCE)
 
     # =============================================================================
     # ** LEDs **
@@ -465,16 +465,16 @@ class HyperionClient:
     # Update: https://docs.hyperion-project.org/en/json/Subscribe.html#priority-updates
     # =================================================================================
 
+    @property
+    def priorities(self):
+        """Return priorites."""
+        return self._get_serverinfo_value(const.KEY_PRIORITIES)
+
     def _update_priorities(self, priorities):
         """Update priorites."""
         if type(priorities) != list:
             return
         self._serverinfo[const.KEY_PRIORITIES] = priorities
-
-    @property
-    def priorities(self):
-        """Return priorites."""
-        return self._get_serverinfo_value(const.KEY_PRIORITIES)
 
     @property
     def visible_priority(self):
@@ -495,16 +495,16 @@ class HyperionClient:
     # Set: https://docs.hyperion-project.org/en/json/Control.html#source-selection
     # ======================================================================================================
 
+    @property
+    def priorities_autoselect(self):
+        """Return priorites."""
+        return self._get_serverinfo_value(const.KEY_PRIORITIES_AUTOSELECT)
+
     def _update_priorities_autoselect(self, priorities_autoselect):
         """Update priorites."""
         if type(priorities_autoselect) != bool:
             return
         self._serverinfo[const.KEY_PRIORITIES_AUTOSELECT] = priorities_autoselect
-
-    @property
-    def priorities_autoselect(self):
-        """Return priorites."""
-        return self._get_serverinfo_value(const.KEY_PRIORITIES_AUTOSELECT)
 
     # ================================================================================
     # ** Sessions **
