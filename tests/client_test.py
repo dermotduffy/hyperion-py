@@ -488,3 +488,30 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
 
         await hc.async_set_color(**color_in)
         self._verify_expected_writes(writer, writes=[self._to_json_line(color_out)])
+
+    async def test_effect(self):
+        """Test controlling effect."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        effect_in = {
+            "command": "effect",
+            "effect": {"name": "Warm mood blobs"},
+            "priority": 50,
+            "origin": "My Fancy App",
+        }
+
+        await hc.async_set_effect(**effect_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(effect_in)])
+
+        effect_in = {
+            "effect": {"name": "Warm mood blobs"},
+            "priority": 50,
+        }
+        effect_out = {
+            "command": "effect",
+            "effect": {"name": "Warm mood blobs"},
+            "priority": 50,
+            "origin": const.DEFAULT_ORIGIN,
+        }
+
+        await hc.async_set_effect(**effect_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(effect_out)])

@@ -327,7 +327,7 @@ class HyperionClient:
     # =====================================================================
 
     async def async_set_color(self, **kwargs):
-        """Request that the videomode be set."""
+        """Request that a color be set."""
         data = self._set_data(
             kwargs,
             hard={const.KEY_COMMAND: const.KEY_COLOR},
@@ -405,6 +405,15 @@ class HyperionClient:
         if type(effects) != list:
             return
         self._serverinfo[const.KEY_EFFECTS] = effects
+
+    async def async_set_effect(self, **kwargs):
+        """Request that an effect be set."""
+        data = self._set_data(
+            kwargs,
+            hard={const.KEY_COMMAND: const.KEY_EFFECT},
+            soft={const.KEY_ORIGIN: self._origin},
+        )
+        await self._async_send_json(data)
 
     # =================================================================================
     # ** Instances **
