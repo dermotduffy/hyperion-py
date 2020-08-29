@@ -462,7 +462,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         await hc._async_manage_connection_once()
         self.assertEqual(hc.leds, leds)
 
-    async def test_color(self):
+    async def test_set_color(self):
         """Test controlling color."""
         (reader, writer, hc) = await self._create_and_test_basic_connected_client()
         color_in = {
@@ -489,7 +489,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         await hc.async_set_color(**color_in)
         self._verify_expected_writes(writer, writes=[self._to_json_line(color_out)])
 
-    async def test_effect(self):
+    async def test_set_effect(self):
         """Test controlling effect."""
         (reader, writer, hc) = await self._create_and_test_basic_connected_client()
         effect_in = {
@@ -516,7 +516,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         await hc.async_set_effect(**effect_in)
         self._verify_expected_writes(writer, writes=[self._to_json_line(effect_out)])
 
-    async def test_image(self):
+    async def test_set_image(self):
         """Test controlling image."""
         (reader, writer, hc) = await self._create_and_test_basic_connected_client()
         image_in = {
@@ -565,3 +565,13 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._verify_expected_writes(writer, writes=[self._to_json_line(clear_in)])
         await hc.async_clear(priority=50)
         self._verify_expected_writes(writer, writes=[self._to_json_line(clear_in)])
+
+    async def test_set_adjustment(self):
+        """Test setting adjustment."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        adjustment_in = {"command": "adjustment", "adjustment": {"gammaRed": 1.5}}
+
+        await hc.async_set_adjustment(**adjustment_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(adjustment_in)])
+        await hc.async_set_adjustment(adjustment={"gammaRed": 1.5})
+        self._verify_expected_writes(writer, writes=[self._to_json_line(adjustment_in)])

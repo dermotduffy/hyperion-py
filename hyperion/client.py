@@ -321,6 +321,11 @@ class HyperionClient:
             return
         self._serverinfo[const.KEY_ADJUSTMENT] = adjustment
 
+    async def async_set_adjustment(self, **kwargs):
+        """Request that a color be set."""
+        data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_ADJUSTMENT})
+        await self._async_send_json(data)
+
     # =====================================================================
     # ** Clear **
     # Set: https://docs.hyperion-project.org/en/json/Control.html#clear
