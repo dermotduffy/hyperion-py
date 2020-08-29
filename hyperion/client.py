@@ -451,6 +451,35 @@ class HyperionClient:
         )
         await self._async_send_json(data)
 
+    # ================================================================================
+    # ** Image Streaming **
+    # Update: https://docs.hyperion-project.org/en/json/Control.html#live-image-stream
+    # Set: https://docs.hyperion-project.org/en/json/Control.html#live-image-stream
+    # ================================================================================
+
+    # TODO: Do something with the updates.
+    async def async_image_stream_start(self, **kwargs):
+        """Request a live image stream to start."""
+        data = self._set_data(
+            kwargs,
+            hard={
+                const.KEY_COMMAND: const.KEY_LEDCOLORS,
+                const.KEY_SUBCOMMAND: const.KEY_IMAGE_STREAM_START,
+            },
+        )
+        await self._async_send_json(data)
+
+    async def async_image_stream_stop(self, **kwargs):
+        """Request a live image stream to stop."""
+        data = self._set_data(
+            kwargs,
+            hard={
+                const.KEY_COMMAND: const.KEY_LEDCOLORS,
+                const.KEY_SUBCOMMAND: const.KEY_IMAGE_STREAM_STOP,
+            },
+        )
+        await self._async_send_json(data)
+
     # =================================================================================
     # ** Instances **
     # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#instance
@@ -541,6 +570,35 @@ class HyperionClient:
     async def async_set_led_mapping_type(self, **kwargs):
         """Request the LED mapping type be set."""
         data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_PROCESSING})
+        await self._async_send_json(data)
+
+    # ===================================================================================
+    # ** Live LED Streaming **
+    # Update: https://docs.hyperion-project.org/en/json/Control.html#live-led-color-stream
+    # Set: https://docs.hyperion-project.org/en/json/Control.html#live-led-color-stream
+    # ====================================================================================
+
+    # TODO: Do something with the updates.
+    async def async_led_stream_start(self, **kwargs):
+        """Request a live led stream to start."""
+        data = self._set_data(
+            kwargs,
+            hard={
+                const.KEY_COMMAND: const.KEY_LEDCOLORS,
+                const.KEY_SUBCOMMAND: const.KEY_LED_STREAM_START,
+            },
+        )
+        await self._async_send_json(data)
+
+    async def async_led_stream_stop(self, **kwargs):
+        """Request a live led stream to stop."""
+        data = self._set_data(
+            kwargs,
+            hard={
+                const.KEY_COMMAND: const.KEY_LEDCOLORS,
+                const.KEY_SUBCOMMAND: const.KEY_LED_STREAM_STOP,
+            },
+        )
         await self._async_send_json(data)
 
     # =================================================================================

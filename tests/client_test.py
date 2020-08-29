@@ -626,7 +626,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         )
 
     async def test_start_stop_switch_instance(self):
-        """Test setting sourceselect."""
+        """Test starting, stopping and switching instances."""
         (reader, writer, hc) = await self._create_and_test_basic_connected_client()
         start_in = {"command": "instance", "subcommand": "startInstance", "instance": 1}
 
@@ -648,3 +648,37 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._verify_expected_writes(writer, writes=[self._to_json_line(switch_in)])
         await hc.async_switch_instance(instance=1)
         self._verify_expected_writes(writer, writes=[self._to_json_line(switch_in)])
+
+    async def test_start_stop_image_stream(self):
+        """Test starting and stopping an image stream."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        start_in = {"command": "ledcolors", "subcommand": "imagestream-start"}
+
+        await hc.async_image_stream_start(**start_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
+        await hc.async_image_stream_start()
+        self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
+
+        stop_in = {"command": "ledcolors", "subcommand": "imagestream-stop"}
+
+        await hc.async_image_stream_stop(**stop_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
+        await hc.async_image_stream_stop()
+        self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
+
+    async def test_start_stop_led_stream(self):
+        """Test starting and stopping an led stream."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        start_in = {"command": "ledcolors", "subcommand": "ledstream-start"}
+
+        await hc.async_led_stream_start(**start_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
+        await hc.async_led_stream_start()
+        self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
+
+        stop_in = {"command": "ledcolors", "subcommand": "ledstream-stop"}
+
+        await hc.async_led_stream_stop(**stop_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
+        await hc.async_led_stream_stop()
+        self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
