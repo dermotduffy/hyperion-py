@@ -344,20 +344,23 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         }
 
         self.assertEqual(len(hc.priorities), 2)
+        self.assertTrue(hc.priorities_autoselect)
         self.assertEqual(hc.visible_priority["priority"], 240)
         self._add_expected_reads(reader, reads=[json.dumps(priorities_command) + "\n"])
         await hc._async_manage_connection_once()
         self.assertEqual(hc.priorities, priorities)
         self.assertEqual(hc.visible_priority, priorities[0])
+        self.assertFalse(hc.priorities_autoselect)
 
         priorities_command = {
             "command": "priorities-update",
-            "data": {"priorities": [], "priorities_autoselect": False},
+            "data": {"priorities": [], "priorities_autoselect": True},
         }
 
         self._add_expected_reads(reader, reads=[json.dumps(priorities_command) + "\n"])
         await hc._async_manage_connection_once()
         self.assertIsNone(hc.visible_priority)
+        self.assertTrue(hc.priorities_autoselect)
 
     async def test_update_instances(self):
         """Test updating instances."""
