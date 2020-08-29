@@ -335,9 +335,12 @@ class HyperionClient:
         )
         await self._async_send_json(data)
 
-    # ===============
+    # ==================================================================================
     # ** Component **
-    # ===============
+    # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#components
+    # Update: https://docs.hyperion-project.org/en/json/Subscribe.html#component-updates
+    # Set: https://docs.hyperion-project.org/en/json/Control.html#control-components
+    # ==================================================================================
 
     def _update_component(self, new_component):
         """Update full Hyperion state."""
@@ -385,9 +388,12 @@ class HyperionClient:
                 return False
         return True
 
-    # =============
+    # ==================================================================================
     # ** Effects **
-    # =============
+    # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#effect-list
+    # Update: https://docs.hyperion-project.org/en/json/Subscribe.html#effects-updates
+    # Set: https://docs.hyperion-project.org/en/json/Control.html#set-effect
+    # ==================================================================================
 
     def _update_effects(self, effects):
         """Update effects."""
@@ -400,9 +406,12 @@ class HyperionClient:
         """Return effects."""
         return self._get_serverinfo_value(const.KEY_EFFECTS)
 
-    # ===============
+    # =================================================================================
     # ** Instances **
-    # ===============
+    # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#instance
+    # Update: https://docs.hyperion-project.org/en/json/Subscribe.html#instance-updates
+    # Set: https://docs.hyperion-project.org/en/json/Control.html#control-instances
+    # =================================================================================
 
     def _update_instances(self, instances):
         """Update instances."""
@@ -415,9 +424,11 @@ class HyperionClient:
         """Return instances."""
         return self._get_serverinfo_value(const.KEY_INSTANCE)
 
-    # ==========
+    # =============================================================================
     # ** LEDs **
-    # ==========
+    # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#leds
+    # Update: https://docs.hyperion-project.org/en/json/Subscribe.html#leds-updates
+    # =============================================================================
 
     @property
     def leds(self):
@@ -430,9 +441,12 @@ class HyperionClient:
             return
         self._serverinfo[const.KEY_LEDS] = leds
 
-    # ======================
-    # ** LED Mapping Type **
-    # ======================
+    # ====================================================================================
+    # ** LED Mapping **
+    # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#led-mapping
+    # Update: https://docs.hyperion-project.org/en/json/Subscribe.html#led-mapping-updates
+    # Set: https://docs.hyperion-project.org/en/json/Control.html#led-mapping
+    # ====================================================================================
 
     @property
     def led_mapping_type(self):
@@ -445,9 +459,11 @@ class HyperionClient:
             return
         self._serverinfo[const.KEY_LED_MAPPING_TYPE] = led_mapping_type
 
-    # ===============
+    # =================================================================================
     # ** Priorites **
-    # ===============
+    # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#priorities
+    # Update: https://docs.hyperion-project.org/en/json/Subscribe.html#priority-updates
+    # =================================================================================
 
     def _update_priorities(self, priorities):
         """Update priorites."""
@@ -472,9 +488,12 @@ class HyperionClient:
                 return priority
         return None
 
-    # ==========================
+    # ======================================================================================================
     # ** Priorites Autoselect **
-    # ==========================
+    # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#priorities-selection-auto-manual
+    # Update: https://docs.hyperion-project.org/en/json/Subscribe.html#priority-updates
+    # Set: https://docs.hyperion-project.org/en/json/Control.html#source-selection
+    # ======================================================================================================
 
     def _update_priorities_autoselect(self, priorities_autoselect):
         """Update priorites."""
@@ -487,9 +506,11 @@ class HyperionClient:
         """Return priorites."""
         return self._get_serverinfo_value(const.KEY_PRIORITIES_AUTOSELECT)
 
-    # ==============
+    # ================================================================================
     # ** Sessions **
-    # ==============
+    # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#sessions
+    # Update: https://docs.hyperion-project.org/en/json/Subscribe.html#session-updates
+    # ================================================================================
 
     @property
     def sessions(self):
@@ -502,9 +523,10 @@ class HyperionClient:
             return
         self._serverinfo[const.KEY_SESSIONS] = sessions
 
-    # ===============]=============
+    # =====================================================================
     # ** Serverinfo (full state) **
-    # =============================
+    # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html
+    # =====================================================================
 
     @property
     def serverinfo(self):
@@ -521,9 +543,12 @@ class HyperionClient:
             return None
         return self._serverinfo.get(key)
 
-    # ===============
+    # ==================================================================================
     # ** Videomode **
-    # ===============
+    # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#video-mode
+    # Update: https://docs.hyperion-project.org/en/json/Subscribe.html#videomode-updates
+    # Set: https://docs.hyperion-project.org/en/json/Control.html#video-mode
+    # ==================================================================================
 
     @property
     def videomode(self):
