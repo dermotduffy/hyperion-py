@@ -33,12 +33,13 @@ class HyperionClient:
         self._timeout_secs = timeout_secs
         self._retry_secs = retry_secs
         self._is_connected = False
+        self._loop = loop or asyncio.get_event_loop()
 
         self._serverinfo = None
 
-        if loop is None:
-            loop = asyncio.get_event_loop()
-        self._loop = loop
+    # ====================
+    # || Networking    ||
+    # ====================
 
     async def async_connect(self):
         """Connect to the Hyperion server."""
@@ -138,7 +139,7 @@ class HyperionClient:
             )
             return False
 
-        self._update_full_state(resp_json[const.KEY_INFO])
+        self._update_serverinfo(resp_json[const.KEY_INFO])
         self._is_connected = True
         return True
 
@@ -279,20 +280,33 @@ class HyperionClient:
         """Return server availability."""
         return self._is_connected
 
+    # ====================
+    # || Data API calls ||
+    # ====================
+
+    # ================
+    # ** Adjustment **
+    # ================
+
+    def _update_adjustment(self, adjustment):
+        """Update adjustment."""
+        if (
+            self._serverinfo is None
+            or type(adjustment) != list
+            or len(adjustment) != 1
+            or type(adjustment[0]) != dict
+        ):
+            return
+        self._serverinfo[const.KEY_ADJUSTMENT] = adjustment
+
     @property
-    def serverinfo(self):
-        """Return current serverinfo."""
-        return self._serverinfo
+    def adjustment(self):
+        """Return adjustment."""
+        return self._get_serverinfo_value(const.KEY_ADJUSTMENT)
 
-    def _get_serverinfo_value(self, key):
-        """Get a value from serverinfo structure given key."""
-        if not self._serverinfo:
-            return None
-        return self._serverinfo.get(key)
-
-    def _update_full_state(self, state):
-        """Update full Hyperion state."""
-        self._serverinfo = state
+    # ===============
+    # ** Component **
+    # ===============
 
     def _update_component(self, new_component):
         """Update full Hyperion state."""
@@ -344,6 +358,70 @@ class HyperionClient:
                 return False
         return True
 
+    # =============
+    # ** Effects **
+    # =============
+
+    def _update_effects(self, effects):
+        """Update effects."""
+        if self._serverinfo is None or type(effects) != list:
+            return
+        self._serverinfo[const.KEY_EFFECTS] = effects
+
+    @property
+    def effects(self):
+        """Return effects."""
+        return self._get_serverinfo_value(const.KEY_EFFECTS)
+
+    # ===============
+    # ** Instances **
+    # ===============
+
+    def _update_instances(self, instances):
+        """Update instances."""
+        if self._serverinfo is None or type(instances) != list:
+            return
+        self._serverinfo[const.KEY_INSTANCE] = instances
+
+    @property
+    def instances(self):
+        """Return instances."""
+        return self._get_serverinfo_value(const.KEY_INSTANCE)
+
+    # ==========
+    # ** LEDs **
+    # ==========
+
+    @property
+    def leds(self):
+        """Return LEDs."""
+        return self._get_serverinfo_value(const.KEY_LEDS)
+
+    def _update_leds(self, leds):
+        """Update LEDs."""
+        if self._serverinfo is None or type(leds) != list:
+            return
+        self._serverinfo[const.KEY_LEDS] = leds
+
+    # ======================
+    # ** LED Mapping Type **
+    # ======================
+
+    @property
+    def led_mapping_type(self):
+        """Return LED mapping type."""
+        return self._get_serverinfo_value(const.KEY_LED_MAPPING_TYPE)
+
+    def _update_led_mapping_type(self, led_mapping_type):
+        """Update LED mapping  type."""
+        if self._serverinfo is None or type(led_mapping_type) != str:
+            return
+        self._serverinfo[const.KEY_LED_MAPPING_TYPE] = led_mapping_type
+
+    # ===============
+    # ** Priorites **
+    # ===============
+
     def _update_priorities(self, priorities):
         """Update priorites."""
         if self._serverinfo is None or type(priorities) != list:
@@ -367,54 +445,9 @@ class HyperionClient:
                 return priority
         return None
 
-    def _update_adjustment(self, adjustment):
-        """Update adjustment."""
-        if (
-            self._serverinfo is None
-            or type(adjustment) != list
-            or len(adjustment) != 1
-            or type(adjustment[0]) != dict
-        ):
-            return
-        self._serverinfo[const.KEY_ADJUSTMENT] = adjustment
-
-    @property
-    def adjustment(self):
-        """Return adjustment."""
-        return self._get_serverinfo_value(const.KEY_ADJUSTMENT)
-
-    def _update_effects(self, effects):
-        """Update effects."""
-        if self._serverinfo is None or type(effects) != list:
-            return
-        self._serverinfo[const.KEY_EFFECTS] = effects
-
-    @property
-    def effects(self):
-        """Return effects."""
-        return self._get_serverinfo_value(const.KEY_EFFECTS)
-
-    def _update_instances(self, instances):
-        """Update instances."""
-        if self._serverinfo is None or type(instances) != list:
-            return
-        self._serverinfo[const.KEY_INSTANCE] = instances
-
-    @property
-    def instances(self):
-        """Return instances."""
-        return self._get_serverinfo_value(const.KEY_INSTANCE)
-
-    @property
-    def led_mapping_type(self):
-        """Return LED mapping type."""
-        return self._get_serverinfo_value(const.KEY_LED_MAPPING_TYPE)
-
-    def _update_led_mapping_type(self, led_mapping_type):
-        """Update LED mapping  type."""
-        if self._serverinfo is None or type(led_mapping_type) != str:
-            return
-        self._serverinfo[const.KEY_LED_MAPPING_TYPE] = led_mapping_type
+    # ==============
+    # ** Sessions **
+    # ==============
 
     @property
     def sessions(self):
@@ -426,6 +459,29 @@ class HyperionClient:
         if self._serverinfo is None or type(sessions) != list:
             return
         self._serverinfo[const.KEY_SESSIONS] = sessions
+
+    # ===============]=============
+    # ** Serverinfo (full state) **
+    # =============================
+
+    @property
+    def serverinfo(self):
+        """Return current serverinfo."""
+        return self._serverinfo
+
+    def _update_serverinfo(self, state):
+        """Update full Hyperion state."""
+        self._serverinfo = state
+
+    def _get_serverinfo_value(self, key):
+        """Get a value from serverinfo structure given key."""
+        if not self._serverinfo:
+            return None
+        return self._serverinfo.get(key)
+
+    # ===============
+    # ** Videomode **
+    # ===============
 
     @property
     def videomode(self):
@@ -454,14 +510,3 @@ class HyperionClient:
         """Update videomode."""
         if self._validate_videomode(videomode):
             self._serverinfo[const.KEY_VIDEOMODE] = videomode
-
-    @property
-    def leds(self):
-        """Return LEDs."""
-        return self._get_serverinfo_value(const.KEY_LEDS)
-
-    def _update_leds(self, leds):
-        """Update LEDs."""
-        if self._serverinfo is None or type(leds) != list:
-            return
-        self._serverinfo[const.KEY_LEDS] = leds
