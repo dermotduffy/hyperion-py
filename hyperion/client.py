@@ -497,6 +497,11 @@ class HyperionClient:
             return
         self._serverinfo[const.KEY_LED_MAPPING_TYPE] = led_mapping_type
 
+    async def async_set_led_mapping_type(self, **kwargs):
+        """Request the LED mapping type be set."""
+        data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_PROCESSING})
+        await self._async_send_json(data)
+
     # =================================================================================
     # ** Priorites **
     # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#priorities

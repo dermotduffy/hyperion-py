@@ -575,3 +575,20 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._verify_expected_writes(writer, writes=[self._to_json_line(adjustment_in)])
         await hc.async_set_adjustment(adjustment={"gammaRed": 1.5})
         self._verify_expected_writes(writer, writes=[self._to_json_line(adjustment_in)])
+
+    async def test_set_led_mapping_type(self):
+        """Test setting adjustment."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        led_mapping_type_in = {
+            "command": "processing",
+            "mappingType": "multicolor_mean",
+        }
+
+        await hc.async_set_led_mapping_type(**led_mapping_type_in)
+        self._verify_expected_writes(
+            writer, writes=[self._to_json_line(led_mapping_type_in)]
+        )
+        await hc.async_set_led_mapping_type(mappingType="multicolor_mean")
+        self._verify_expected_writes(
+            writer, writes=[self._to_json_line(led_mapping_type_in)]
+        )
