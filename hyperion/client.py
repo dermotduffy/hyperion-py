@@ -11,6 +11,8 @@ _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.DEBUG)
 
 # TODO: Some way to get error messages from set calls.
+# TODO: Support callbacks.
+# TODO: Support auth calls (e.g. check if auth is required)
 
 
 class HyperionClient:
