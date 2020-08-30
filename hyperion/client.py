@@ -446,6 +446,18 @@ class HyperionClient:
         )
         await self._async_send_json(data)
 
+    async def async_request_token_abort(self, **kwargs):
+        """Abort a request for an authorization token."""
+        data = self._set_data(
+            kwargs,
+            hard={
+                const.KEY_COMMAND: const.KEY_AUTHORIZE,
+                const.KEY_SUBCOMMAND: const.KEY_REQUEST_TOKEN,
+                const.KEY_ACCEPT: False,
+            },
+        )
+        await self._async_send_json(data)
+
     # ====================
     # || Data API calls ||
     # ====================

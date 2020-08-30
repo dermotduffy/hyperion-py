@@ -1,6 +1,7 @@
 #!/usr/bin/python
 """Hyperion Constants."""
 
+KEY_ACCEPT = "accept"
 KEY_ADJUSTMENT = "adjustment"
 KEY_AUTHORIZE = "authorize"
 KEY_AUTHORIZE_LOGIN = "authorize-login"
