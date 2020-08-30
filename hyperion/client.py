@@ -11,8 +11,6 @@ _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.DEBUG)
 
 # TODO: Handle all kinds of connection failures during send (incl. exceptions raised during await)
-# TODO: Logout may wish to disconnect
-# TODO: Test disconnect
 # TODO: Support auth calls (e.g. check if auth is required)
 
 
@@ -65,6 +63,11 @@ class HyperionClient:
     def instance(self):
         """Return server instance."""
         return self._instance
+
+    @property
+    def manage_connection(self):
+        """Whether the client is actively managing the connection."""
+        return self._manage_connection
 
     async def async_connect(self):
         """Connect to the Hyperion server."""
@@ -346,6 +349,8 @@ class HyperionClient:
             and const.KEY_LEDS in resp_json.get(const.KEY_DATA, {})
         ):
             self._update_leds(resp_json[const.KEY_DATA][const.KEY_LEDS])
+        elif command == f"{const.KEY_AUTHORIZE_LOGOUT}":
+            await self.async_disconnect()
 
         if command in self._callbacks:
             self._callbacks[command](resp_json)

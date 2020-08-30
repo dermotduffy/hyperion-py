@@ -229,9 +229,10 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
 
         # Verify that post-disconnect the instance is preserved so next
         # connect() will re-join the same instance.
-        await hc._async_disconnect_internal()
+        await hc.async_disconnect()
         self.assertTrue(writer.close.called)
         self.assertTrue(writer.wait_closed.called)
+        self.assertFalse(hc.is_connected)
         self.assertEqual(hc.instance, instance)
 
     async def test_instance_switch_causes_disconnect_if_refresh_fails(self):
@@ -892,3 +893,15 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._verify_expected_writes(
             writer, writes=[self._to_json_line(auth_logout_in)]
         )
+
+        # A logout success response should cause the client to disconnect.
+        auth_logout_out = {
+            "command": "authorize-logout",
+            "success": True,
+        }
+        self._add_expected_reads(reader, reads=[json.dumps(auth_logout_out) + "\n"])
+        await hc._async_manage_connection_once()
+        self.assertTrue(writer.close.called)
+        self.assertTrue(writer.wait_closed.called)
+        self.assertFalse(hc.is_connected)
+        self.assertFalse(hc.manage_connection)

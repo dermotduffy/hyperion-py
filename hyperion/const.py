@@ -4,6 +4,7 @@
 KEY_ADJUSTMENT = "adjustment"
 KEY_AUTHORIZE = "authorize"
 KEY_AUTHORIZE_LOGIN = "authorize-login"
+KEY_AUTHORIZE_LOGOUT = "authorize-logout"
 KEY_BRIGHTNESS = "brightness"
 KEY_CLEAR = "clear"
 KEY_COLOR = "color"
