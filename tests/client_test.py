@@ -227,11 +227,11 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         await hc._async_manage_connection_once()
         self.assertEqual(hc.instance, instance)
 
-        await hc._async_disconnect()
+        # Verify that post-disconnect the instance is preserved so next
+        # connect() will re-join the same instance.
+        await hc._async_disconnect_internal()
         self.assertTrue(writer.close.called)
         self.assertTrue(writer.wait_closed.called)
-
-        # Instance should be preserved so next connect() will re-join the same instance.
         self.assertEqual(hc.instance, instance)
 
     async def test_instance_switch_causes_disconnect_if_refresh_fails(self):
@@ -875,3 +875,20 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._verify_expected_writes(writer, writes=[self._to_json_line(auth_login_in)])
         await hc.async_login(token=token)
         self._verify_expected_writes(writer, writes=[self._to_json_line(auth_login_in)])
+
+    async def test_async_logout(self):
+        """Test setting videomode."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        auth_logout_in = {
+            "command": "authorize",
+            "subcommand": "logout",
+        }
+
+        await hc.async_logout(**auth_logout_in)
+        self._verify_expected_writes(
+            writer, writes=[self._to_json_line(auth_logout_in)]
+        )
+        await hc.async_logout()
+        self._verify_expected_writes(
+            writer, writes=[self._to_json_line(auth_logout_in)]
+        )

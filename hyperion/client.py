@@ -11,6 +11,8 @@ _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.DEBUG)
 
 # TODO: Handle all kinds of connection failures during send (incl. exceptions raised during await)
+# TODO: Logout may wish to disconnect
+# TODO: Test disconnect
 # TODO: Support auth calls (e.g. check if auth is required)
 
 
@@ -44,6 +46,8 @@ class HyperionClient:
         self._retry_secs = retry_secs
         self._is_connected = False
         self._loop = loop or asyncio.get_event_loop()
+
+        self._manage_connection = True
         self._manage_connection_task = None
 
         self._serverinfo = None
@@ -125,6 +129,7 @@ class HyperionClient:
         if not await self._refresh_serverinfo():
             return False
 
+        self._manage_connection = True
         self._is_connected = True
         return True
 
@@ -167,11 +172,16 @@ class HyperionClient:
         self._update_serverinfo(resp_json[const.KEY_INFO])
         return True
 
-    async def _async_disconnect(self):
-        """Close streams to the Hyperion server."""
+    async def _async_disconnect_internal(self):
+        """Close streams to the Hyperion server. Will be re-established."""
         self._is_connected = False
         self._writer.close()
         await self._writer.wait_closed()
+
+    async def async_disconnect(self):
+        """Close streams to the Hyperion server. Do not re-establish."""
+        await self._async_disconnect_internal()
+        self._manage_connection = False
 
     async def _async_send_json(self, request):
         """Send JSON to the server."""
@@ -192,7 +202,7 @@ class HyperionClient:
             _LOGGER.warning(
                 "Connection to Hyperion lost (%s:%i) ...", self._host, self._port
             )
-            await self._async_disconnect()
+            await self._async_disconnect_internal()
             return None
 
         _LOGGER.debug("Read from server (%s:%i): %s", self._host, self._port, resp)
@@ -218,14 +228,14 @@ class HyperionClient:
             return None
         return resp_json
 
-    async def async_manage_connection_in_background_forever(self):
+    async def async_manage_connection_in_background(self):
         """Run connection management in background task."""
 
-        def manage_forever(self):
-            while True:
+        def manage(self):
+            while self._manage_connection:
                 self._async_manage_connection_once()
 
-        self._manage_connection_task = self._loop.create_task(manage_forever(self))
+        self._manage_connection_task = self._loop.create_task(manage(self))
 
     async def _change_instance(self, instance):
         if not await self._refresh_serverinfo():
@@ -234,7 +244,7 @@ class HyperionClient:
                 "(%s:%i, instance %i), must disconnect..."
                 % (self._host, self._port, instance)
             )
-            await self._async_disconnect()
+            await self._async_disconnect_internal()
         else:
             self._instance = instance
 
@@ -249,7 +259,7 @@ class HyperionClient:
                     self._port,
                     self._retry_secs,
                 )
-                await self._async_disconnect()
+                await self._async_disconnect_internal()
                 await asyncio.sleep(const.DEFAULT_CONNECTION_RETRY_DELAY)
                 return
 
@@ -384,6 +394,22 @@ class HyperionClient:
             hard={
                 const.KEY_COMMAND: const.KEY_AUTHORIZE,
                 const.KEY_SUBCOMMAND: const.KEY_LOGIN,
+            },
+        )
+        await self._async_send_json(data)
+
+    # =============================================================================
+    # ** Logout **
+    # https://docs.hyperion-project.org/en/json/Authorization.html#logout
+    # =============================================================================
+
+    async def async_logout(self, **kwargs):
+        """Logout."""
+        data = self._set_data(
+            kwargs,
+            hard={
+                const.KEY_COMMAND: const.KEY_AUTHORIZE,
+                const.KEY_SUBCOMMAND: const.KEY_LOGOUT,
             },
         )
         await self._async_send_json(data)
