@@ -860,3 +860,18 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._add_expected_reads(reader, reads=[json.dumps(auth_response) + "\n"])
         await hc._async_manage_connection_once()
         self.assertTrue(is_auth_required)
+
+    async def test_async_login(self):
+        """Test setting videomode."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        token = "sekrit"
+        auth_login_in = {
+            "command": "authorize",
+            "subcommand": "login",
+            "token": token,
+        }
+
+        await hc.async_login(**auth_login_in)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(auth_login_in)])
+        await hc.async_login(token=token)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(auth_login_in)])

@@ -10,7 +10,7 @@ from hyperion import const
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.DEBUG)
 
-# TODO: Handle all kinds of connection failures during send.
+# TODO: Handle all kinds of connection failures during send (incl. exceptions raised during await)
 # TODO: Support auth calls (e.g. check if auth is required)
 
 
@@ -83,12 +83,7 @@ class HyperionClient:
 
         # == Request: authorize ==
         if self._token is not None:
-            data = {
-                const.KEY_COMMAND: const.KEY_AUTHORIZE,
-                const.KEY_SUBCOMMAND: const.KEY_LOGIN,
-                const.KEY_TOKEN: self._token,
-            }
-            await self._async_send_json(data)
+            await self.async_login(token=self._token)
             resp_json = await self._async_safely_read_command()
             if (
                 not resp_json
@@ -373,6 +368,22 @@ class HyperionClient:
             hard={
                 const.KEY_COMMAND: const.KEY_AUTHORIZE,
                 const.KEY_SUBCOMMAND: const.KEY_TOKEN_REQUIRED,
+            },
+        )
+        await self._async_send_json(data)
+
+    # =============================================================================
+    # ** Login **
+    # https://docs.hyperion-project.org/en/json/Authorization.html#login-with-token
+    # =============================================================================
+
+    async def async_login(self, **kwargs):
+        """Login with token."""
+        data = self._set_data(
+            kwargs,
+            hard={
+                const.KEY_COMMAND: const.KEY_AUTHORIZE,
+                const.KEY_SUBCOMMAND: const.KEY_LOGIN,
             },
         )
         await self._async_send_json(data)
