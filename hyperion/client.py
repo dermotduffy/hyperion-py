@@ -4,6 +4,8 @@
 import asyncio
 import json
 import logging
+import random
+import string
 
 from hyperion import const
 
@@ -12,6 +14,7 @@ _LOGGER.setLevel(logging.DEBUG)
 
 # TODO: Handle all kinds of connection failures during send (incl. exceptions raised during await)
 # TODO: Support auth calls (e.g. check if auth is required)
+# TODO: Replace async_connect usage of auth.
 
 
 class HyperionClient:
@@ -416,6 +419,30 @@ class HyperionClient:
                 const.KEY_COMMAND: const.KEY_AUTHORIZE,
                 const.KEY_SUBCOMMAND: const.KEY_LOGOUT,
             },
+        )
+        await self._async_send_json(data)
+
+    # ============================================================================
+    # ** Request Token **
+    # https://docs.hyperion-project.org/en/json/Authorization.html#request-a-token
+    # ============================================================================
+
+    async def async_request_token(self, **kwargs):
+        """Request an authorization token.
+
+        The user will accept/deny the token request on the Web UI.
+        """
+        random_token = "".join(
+            random.choice(string.ascii_letters + string.digits) for i in range(0, 5)
+        )
+
+        data = self._set_data(
+            kwargs,
+            hard={
+                const.KEY_COMMAND: const.KEY_AUTHORIZE,
+                const.KEY_SUBCOMMAND: const.KEY_REQUEST_TOKEN,
+            },
+            soft={const.KEY_ID: random_token},
         )
         await self._async_send_json(data)
 

@@ -87,6 +87,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             len(writes),
             msg="Incorrect number of write calls",
         )
+        writer.write.mock_calls = []
         writer.method_calls = []
 
     def _verify_reader(self, reader):
@@ -905,3 +906,35 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self.assertTrue(writer.wait_closed.called)
         self.assertFalse(hc.is_connected)
         self.assertFalse(hc.manage_connection)
+
+    async def test_request_token(self):
+        """Test requesting an auth token."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+
+        request_token_in = {
+            "command": "authorize",
+            "subcommand": "requestToken",
+            "comment": "Test",
+            "id": "T3c92",
+        }
+
+        await hc.async_request_token(**request_token_in)
+        self._verify_expected_writes(
+            writer, writes=[self._to_json_line(request_token_in)]
+        )
+
+        small_request_token_in = {
+            "comment": "Test",
+        }
+
+        await hc.async_request_token(**small_request_token_in)
+
+        # Do manual verification of the write calls to ensure the id argument
+        # gets set to some random value.
+        name, args, kwargs = writer.write.mock_calls[0]
+        data = json.loads(args[0])
+        self.assertEqual(len(data), 4)
+        logging.error("%s / %s", data, small_request_token_in)
+        for key in ["command", "subcommand", "comment"]:
+            self.assertEqual(data[key], request_token_in[key])
+        self.assertEqual(len(data[const.KEY_ID]), 5)
