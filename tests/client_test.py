@@ -434,7 +434,11 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         """Test updating instances."""
         (reader, writer, hc) = await self._create_and_test_basic_connected_client()
 
-        instances = [{"instance": 0, "running": True, "friendly_name": "Test instance"}]
+        instances = [
+            {"instance": 0, "running": True, "friendly_name": "Test instance 0"},
+            {"instance": 1, "running": True, "friendly_name": "Test instance 1"},
+            {"instance": 2, "running": True, "friendly_name": "Test instance 2"},
+        ]
 
         instances_command = {
             "command": "instance-update",
@@ -445,6 +449,43 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._add_expected_reads(reader, reads=[json.dumps(instances_command) + "\n"])
         await hc._async_manage_connection_once()
         self.assertEqual(hc.instances, instances)
+
+        # Switch to instance 1
+        instance = 1
+        switched = {
+            "command": "instance-switchTo",
+            "info": {"instance": instance},
+            "success": True,
+            "tan": 0,
+        }
+        self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
+        self._add_expected_reads(reader, reads=[json.dumps(switched) + "\n"])
+        self._add_expected_reads_from_files(
+            reader, filenames=[JSON_FILENAME_SERVERINFO_RESPONSE]
+        )
+
+        await hc._async_manage_connection_once()
+        self.assertEqual(hc.instance, instance)
+
+        # Now update instances again to exclude instance 1 (it should reset to 0).
+        instances = [
+            {"instance": 0, "running": True, "friendly_name": "Test instance 0"},
+            {"instance": 1, "running": False, "friendly_name": "Test instance 1"},
+            {"instance": 2, "running": True, "friendly_name": "Test instance 2"},
+        ]
+
+        instances_command = {
+            "command": "instance-update",
+            "data": instances,
+        }
+
+        self._add_expected_reads(reader, reads=[json.dumps(instances_command) + "\n"])
+        self._add_expected_reads_from_files(
+            reader, filenames=[JSON_FILENAME_SERVERINFO_RESPONSE]
+        )
+
+        await hc._async_manage_connection_once()
+        self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
 
     async def test_update_led_mapping_type(self):
         """Test updating LED mapping type."""

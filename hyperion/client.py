@@ -231,6 +231,17 @@ class HyperionClient:
 
         self._manage_connection_task = self._loop.create_task(manage_forever(self))
 
+    async def _change_instance(self, instance):
+        if not await self._refresh_serverinfo():
+            _LOGGER.warning(
+                "Could not reload state after instance change on "
+                "(%s:%i, instance %i), must disconnect..."
+                % (self._host, self._port, instance)
+            )
+            await self._async_disconnect()
+        else:
+            self._instance = instance
+
     async def _async_manage_connection_once(self):
         """Manage the bidirectional connection to the server."""
         if not self._is_connected:
@@ -281,8 +292,20 @@ class HyperionClient:
             command == f"{const.KEY_INSTANCE}-{const.KEY_UPDATE}"
             and const.KEY_DATA in resp_json
         ):
-            self._update_instances(resp_json[const.KEY_DATA])
-            # TODO: Handle disappearing instance.
+            # If instances are changed, and the current instance is not listed
+            # in the new instance update, then the connection is automatically
+            # bumped back to instance 0 (the default).
+            instances = resp_json[const.KEY_DATA]
+
+            for instance in instances:
+                if (
+                    instance.get(const.KEY_INSTANCE) == self._instance
+                    and instance.get(const.KEY_RUNNING) is True
+                ):
+                    self._update_instances(instances)
+                    break
+            else:
+                await self._change_instance(const.DEFAULT_INSTANCE)
         elif (
             command == f"{const.KEY_INSTANCE}-{const.KEY_SWITCH_TO}"
             and resp_json.get(const.KEY_INFO, {}).get(const.KEY_INSTANCE) is not None
@@ -294,15 +317,7 @@ class HyperionClient:
             #
             # This is our cue to fully refresh our serverinfo so our internal
             # state is representing the correct instance.
-            instance = resp_json[const.KEY_INFO][const.KEY_INSTANCE]
-            if not await self._refresh_serverinfo():
-                _LOGGER.warning(
-                    "Could not reload state after instance change on "
-                    "(%s:%i, instance %i)" % (self._host, self._port, instance)
-                )
-                await self._async_disconnect()
-            else:
-                self._instance = instance
+            await self._change_instance(resp_json[const.KEY_INFO][const.KEY_INSTANCE])
         elif (
             command == f"{const.KEY_LED_MAPPING}-{const.KEY_UPDATE}"
             and const.KEY_LED_MAPPING_TYPE in resp_json.get(const.KEY_DATA, {})
