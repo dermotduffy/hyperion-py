@@ -10,7 +10,6 @@ from hyperion import const
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.DEBUG)
 
-# TODO: Some way to get error messages from set calls.
 # TODO: Support auth calls (e.g. check if auth is required)
 
 
@@ -44,12 +43,23 @@ class HyperionClient:
         self._retry_secs = retry_secs
         self._is_connected = False
         self._loop = loop or asyncio.get_event_loop()
+        self._manage_connection_task = None
 
         self._serverinfo = None
 
     # ====================
     # || Networking    ||
     # ====================
+
+    @property
+    def is_connected(self):
+        """Return server availability."""
+        return self._is_connected
+
+    @property
+    def instance(self):
+        """Return server instance."""
+        return self._instance
 
     async def async_connect(self):
         """Connect to the Hyperion server."""
@@ -116,6 +126,13 @@ class HyperionClient:
                 )
                 return False
 
+        if not await self._refresh_serverinfo():
+            return False
+
+        self._is_connected = True
+        return True
+
+    async def _refresh_serverinfo(self):
         # == Request: serverinfo ==
         # Request full state ('serverinfo') and subscribe to relevant
         # future updates to keep this object state accurate without the need to
@@ -144,7 +161,7 @@ class HyperionClient:
             or not resp_json.get(const.KEY_SUCCESS, False)
         ):
             _LOGGER.warning(
-                "Could not load initial state for Hyperion (%s:%i): %s",
+                "Could not load serverinfo state for Hyperion (%s:%i): %s",
                 self._host,
                 self._port,
                 resp_json,
@@ -152,11 +169,11 @@ class HyperionClient:
             return False
 
         self._update_serverinfo(resp_json[const.KEY_INFO])
-        self._is_connected = True
         return True
 
-    async def _async_close_streams(self):
+    async def _async_disconnect(self):
         """Close streams to the Hyperion server."""
+        self._is_connected = False
         self._writer.close()
         await self._writer.wait_closed()
 
@@ -179,7 +196,7 @@ class HyperionClient:
             _LOGGER.warning(
                 "Connection to Hyperion lost (%s:%i) ...", self._host, self._port
             )
-            await self._async_close_streams()
+            await self._async_disconnect()
             return None
 
         _LOGGER.debug("Read from server (%s:%i): %s", self._host, self._port, resp)
@@ -212,7 +229,7 @@ class HyperionClient:
             while True:
                 self._async_manage_connection_once()
 
-        self._loop.create_task(manage_forever(self))
+        self._manage_connection_task = self._loop.create_task(manage_forever(self))
 
     async def _async_manage_connection_once(self):
         """Manage the bidirectional connection to the server."""
@@ -225,7 +242,7 @@ class HyperionClient:
                     self._port,
                     self._retry_secs,
                 )
-                await self._async_close_streams()
+                await self._async_disconnect()
                 await asyncio.sleep(const.DEFAULT_CONNECTION_RETRY_DELAY)
                 return
 
@@ -266,6 +283,21 @@ class HyperionClient:
         ):
             self._update_instances(resp_json[const.KEY_DATA])
             # TODO: Handle disappearing instance.
+            # {"command":"instance-switchTo","info":{"instance":1},"success":true,"tan":0}
+        elif (
+            command == f"{const.KEY_INSTANCE}-{const.KEY_SWITCH_TO}"
+            and resp_json.get(const.KEY_INFO, {}).get(const.KEY_INSTANCE) is not None
+        ):
+            # Connection has been switched to another instance.
+            instance = resp_json[const.KEY_INFO][const.KEY_INSTANCE]
+            if not await self._refresh_serverinfo():
+                _LOGGER.warning(
+                    "Could not reload state after instance change on "
+                    "(%s:%i, instance %i)" % (self._host, self._port, instance)
+                )
+                await self._async_disconnect()
+            else:
+                self._instance = instance
         elif (
             command == f"{const.KEY_LED_MAPPING}-{const.KEY_UPDATE}"
             and const.KEY_LED_MAPPING_TYPE in resp_json.get(const.KEY_DATA, {})
@@ -293,11 +325,6 @@ class HyperionClient:
             self._callbacks[command](resp_json)
         elif self._default_callback is not None:
             self._default_callback(resp_json)
-
-    @property
-    def is_connected(self):
-        """Return server availability."""
-        return self._is_connected
 
     # ==================
     # || Helper calls ||

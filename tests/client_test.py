@@ -196,6 +196,8 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             )
             self.assertTrue(await hc.async_connect())
 
+        self.assertEqual(hc.instance, TEST_INSTANCE)
+
         self._verify_reader(reader)
         self._verify_expected_writes(
             writer,
@@ -204,6 +206,64 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
                 self._to_json_line(SERVERINFO_REQUEST),
             ],
         )
+
+    async def test_instance_switch_causes_refresh(self):
+        """Test that an instance switch causes a full refresh."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+
+        instance = 1
+        switched = {
+            "command": "instance-switchTo",
+            "info": {"instance": instance},
+            "success": True,
+            "tan": 0,
+        }
+        self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
+        self._add_expected_reads(reader, reads=[json.dumps(switched) + "\n"])
+        self._add_expected_reads_from_files(
+            reader, filenames=[JSON_FILENAME_SERVERINFO_RESPONSE]
+        )
+
+        await hc._async_manage_connection_once()
+        self.assertEqual(hc.instance, instance)
+
+        await hc._async_disconnect()
+        self.assertTrue(writer.close.called)
+        self.assertTrue(writer.wait_closed.called)
+
+        # Instance should be preserved so next connect() will re-join the same instance.
+        self.assertEqual(hc.instance, instance)
+
+    async def test_instance_switch_causes_disconnect_if_refresh_fails(self):
+        """Test that an instance must get a full refresh or it will disconnect."""
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+
+        instance = 1
+        switched = {
+            "command": "instance-switchTo",
+            "info": {"instance": instance},
+            "success": True,
+            "tan": 0,
+        }
+        self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
+        self._add_expected_reads(
+            reader,
+            reads=[
+                json.dumps(switched) + "\n",
+                "THIS IS NOT A VALID SERVERINFO AND SHOULD CAUSE A DISCONNECT" + "\n",
+            ],
+        )
+
+        self.assertFalse(writer.close.called)
+        self.assertFalse(writer.wait_closed.called)
+
+        await hc._async_manage_connection_once()
+
+        self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
+        self.assertFalse(hc.is_connected)
+
+        self.assertTrue(writer.close.called)
+        self.assertTrue(writer.wait_closed.called)
 
     async def test_is_on(self):
         """Test the client reports correctly on whether components are on."""
