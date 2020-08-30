@@ -10,6 +10,7 @@ from hyperion import const
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.DEBUG)
 
+# TODO: Handle all kinds of connection failures during send.
 # TODO: Support auth calls (e.g. check if auth is required)
 
 
@@ -355,6 +356,26 @@ class HyperionClient:
         output.update(data)
         output.update(hard or {})
         return output
+
+    # =============================
+    # || Authorization API calls ||
+    # =============================
+
+    # ================================================================================
+    # ** Authorization Check **
+    # https://docs.hyperion-project.org/en/json/Authorization.html#authorization-check
+    # ================================================================================
+
+    async def async_is_auth_required(self, **kwargs):
+        """Determine if authorization is required."""
+        data = self._set_data(
+            kwargs,
+            hard={
+                const.KEY_COMMAND: const.KEY_AUTHORIZE,
+                const.KEY_SUBCOMMAND: const.KEY_TOKEN_REQUIRED,
+            },
+        )
+        await self._async_send_json(data)
 
     # ====================
     # || Data API calls ||

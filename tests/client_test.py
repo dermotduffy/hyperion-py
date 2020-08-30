@@ -832,3 +832,31 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
 
         self.assertEqual(received_default_json, random_update)
         self.assertIsNone(received_component_json)
+
+    async def test_is_auth_required(self):
+        """Test determining if authorization is required."""
+        is_auth_required = None
+
+        def auth_callback(json):
+            nonlocal is_auth_required
+            is_auth_required = json[const.KEY_INFO][const.KEY_REQUIRED]
+
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client(
+            callbacks={"authorize-tokenRequired": auth_callback},
+        )
+
+        auth_request = {"command": "authorize", "subcommand": "tokenRequired"}
+
+        auth_response = {
+            "command": "authorize-tokenRequired",
+            "info": {"required": True},
+            "success": True,
+            "tan": 0,
+        }
+
+        await hc.async_is_auth_required()
+        self._verify_expected_writes(writer, writes=[self._to_json_line(auth_request)])
+
+        self._add_expected_reads(reader, reads=[json.dumps(auth_response) + "\n"])
+        await hc._async_manage_connection_once()
+        self.assertTrue(is_auth_required)
