@@ -283,12 +283,17 @@ class HyperionClient:
         ):
             self._update_instances(resp_json[const.KEY_DATA])
             # TODO: Handle disappearing instance.
-            # {"command":"instance-switchTo","info":{"instance":1},"success":true,"tan":0}
         elif (
             command == f"{const.KEY_INSTANCE}-{const.KEY_SWITCH_TO}"
             and resp_json.get(const.KEY_INFO, {}).get(const.KEY_INSTANCE) is not None
         ):
-            # Connection has been switched to another instance.
+            # Upon connection being successfully switched to another instance,
+            # the client will receive:
+            #
+            # {"command":"instance-switchTo","info":{"instance":1},"success":true,"tan":0}
+            #
+            # This is our cue to fully refresh our serverinfo so our internal
+            # state is representing the correct instance.
             instance = resp_json[const.KEY_INFO][const.KEY_INSTANCE]
             if not await self._refresh_serverinfo():
                 _LOGGER.warning(
@@ -557,7 +562,6 @@ class HyperionClient:
         )
         await self._async_send_json(data)
 
-    # TODO: Do I have to issue a fresh serverinfo call if this is executed...
     async def async_switch_instance(self, **kwargs):
         """Stop an instance."""
         data = self._set_data(
