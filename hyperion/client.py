@@ -13,7 +13,6 @@ _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.DEBUG)
 
 # TODO: Handle all kinds of connection failures during send (incl. exceptions raised during await)
-# TODO: Support auth calls (e.g. check if auth is required)
 # TODO: Replace async_connect usage of auth.
 
 
@@ -111,12 +110,7 @@ class HyperionClient:
 
         # == Request: instance ==
         if self._instance != const.DEFAULT_INSTANCE:
-            data = {
-                const.KEY_COMMAND: const.KEY_INSTANCE,
-                const.KEY_SUBCOMMAND: const.KEY_SWITCH_TO,
-                const.KEY_INSTANCE: self._instance,
-            }
-            await self._async_send_json(data)
+            await self.async_switch_instance(instance=self._instance)
             resp_json = await self._async_safely_read_command()
             if (
                 not resp_json
