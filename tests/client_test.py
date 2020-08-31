@@ -5,7 +5,7 @@ import asynctest
 import asyncio
 import json
 import os
-from unittest import mock
+import unittest
 from hyperion import client, const
 import logging
 
@@ -37,6 +37,8 @@ SERVERINFO_REQUEST = {
         "videomode-update",
     ],
 }
+
+# TODO More use of to_json_line rather than dumps in functions.
 
 
 class AsyncHyperionClientTestCase(asynctest.TestCase):
@@ -78,9 +80,11 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         ):
             self.assertEqual(
                 writer.method_calls[call_index],
-                mock.call.write(writes[int(call_index / 2)]),
+                unittest.mock.call.write(writes[int(call_index / 2)]),
             )
-            self.assertEqual(writer.method_calls[call_index + 1], mock.call.drain)
+            self.assertEqual(
+                writer.method_calls[call_index + 1], unittest.mock.call.drain
+            )
             call_index += 2
         self.assertEqual(
             len(writer.method_calls) / 2,
@@ -948,3 +952,49 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._verify_expected_writes(
             writer, writes=[self._to_json_line(request_token_in)]
         )
+
+    def test_threaded_client(self):
+        """Test the threaded client."""
+        # An authorize-logout should cause the listening thread to disconnect.
+        auth_logout_out = {
+            "command": "authorize-logout",
+            "success": True,
+        }
+
+        reader = self._create_mock_reader(filenames=[JSON_FILENAME_SERVERINFO_RESPONSE])
+        writer = self._create_mock_writer()
+
+        with asynctest.mock.patch(
+            "asyncio.open_connection", return_value=(reader, writer)
+        ):
+            hc = client.ThreadedHyperionClient(
+                TEST_HOST,
+                TEST_PORT,
+            )
+            self.assertTrue(hc.connect())
+
+        serverinfo_request_json = self._to_json_line(SERVERINFO_REQUEST)
+        self._verify_expected_writes(writer, writes=[serverinfo_request_json])
+
+        self.assertTrue(hc.is_connected)
+        self._add_expected_reads(reader, reads=[json.dumps(auth_logout_out) + "\n"])
+
+        hc.start()
+        hc.join()
+
+        self.assertFalse(hc.is_connected)
+        self._verify_reader(reader)
+
+    def test_threaded_client_has_correct_methods(self):
+        """Verify the threaded client exports all the correct methods."""
+        contents = dir(
+            client.ThreadedHyperionClient(
+                TEST_HOST,
+                TEST_PORT,
+            )
+        )
+
+        # Verify all async methods have a sync wrapped version.
+        for name in contents:
+            if name.startswith("async_"):
+                self.assertIn(name[len("async_") :], contents)
