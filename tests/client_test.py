@@ -38,8 +38,6 @@ SERVERINFO_REQUEST = {
     ],
 }
 
-# TODO More use of to_json_line rather than dumps in functions.
-
 
 class AsyncHyperionClientTestCase(asynctest.TestCase):
     """Test case for the Hyperion Client."""
@@ -223,7 +221,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "tan": 0,
         }
         self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
-        self._add_expected_reads(reader, reads=[json.dumps(switched) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(switched)])
         self._add_expected_reads_from_files(
             reader, filenames=[JSON_FILENAME_SERVERINFO_RESPONSE]
         )
@@ -254,7 +252,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._add_expected_reads(
             reader,
             reads=[
-                json.dumps(switched) + "\n",
+                self._to_json_line(switched),
                 "THIS IS NOT A VALID SERVERINFO AND SHOULD CAUSE A DISCONNECT" + "\n",
             ],
         )
@@ -324,7 +322,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         }
 
         self.assertTrue(hc.is_on(components=[const.KEY_COMPONENTID_SMOOTHING]))
-        self._add_expected_reads(reader, reads=[json.dumps(component) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(component)])
         await hc._async_manage_connection_once()
         self.assertFalse(hc.is_on(components=[const.KEY_COMPONENTID_SMOOTHING]))
 
@@ -336,7 +334,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         }
 
         self.assertFalse(hc.is_on(components=[component_name]))
-        self._add_expected_reads(reader, reads=[json.dumps(component) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(component)])
         await hc._async_manage_connection_once()
         self.assertTrue(hc.is_on(components=[component_name]))
 
@@ -351,7 +349,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         }
 
         self.assertEqual(hc.adjustment[0]["brightness"], 83)
-        self._add_expected_reads(reader, reads=[json.dumps(adjustment) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(adjustment)])
         await hc._async_manage_connection_once()
         self.assertEqual(hc.adjustment[0]["brightness"], 25)
 
@@ -375,7 +373,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "data": [effect],
         }
         self.assertEqual(len(hc.effects), 39)
-        self._add_expected_reads(reader, reads=[json.dumps(effects) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(effects)])
         await hc._async_manage_connection_once()
         self.assertEqual(len(hc.effects), 1)
         self.assertEqual(hc.effects[0], effect)
@@ -419,7 +417,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self.assertEqual(len(hc.priorities), 2)
         self.assertTrue(hc.priorities_autoselect)
         self.assertEqual(hc.visible_priority["priority"], 240)
-        self._add_expected_reads(reader, reads=[json.dumps(priorities_command) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(priorities_command)])
         await hc._async_manage_connection_once()
         self.assertEqual(hc.priorities, priorities)
         self.assertEqual(hc.visible_priority, priorities[0])
@@ -430,7 +428,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "data": {"priorities": [], "priorities_autoselect": True},
         }
 
-        self._add_expected_reads(reader, reads=[json.dumps(priorities_command) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(priorities_command)])
         await hc._async_manage_connection_once()
         self.assertIsNone(hc.visible_priority)
         self.assertTrue(hc.priorities_autoselect)
@@ -451,7 +449,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         }
 
         self.assertEqual(len(hc.instances), 2)
-        self._add_expected_reads(reader, reads=[json.dumps(instances_command) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(instances_command)])
         await hc._async_manage_connection_once()
         self.assertEqual(hc.instances, instances)
 
@@ -464,7 +462,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "tan": 0,
         }
         self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
-        self._add_expected_reads(reader, reads=[json.dumps(switched) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(switched)])
         self._add_expected_reads_from_files(
             reader, filenames=[JSON_FILENAME_SERVERINFO_RESPONSE]
         )
@@ -484,7 +482,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "data": instances,
         }
 
-        self._add_expected_reads(reader, reads=[json.dumps(instances_command) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(instances_command)])
         self._add_expected_reads_from_files(
             reader, filenames=[JSON_FILENAME_SERVERINFO_RESPONSE]
         )
@@ -505,7 +503,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
 
         self.assertNotEqual(hc.led_mapping_type, led_mapping_type)
         self._add_expected_reads(
-            reader, reads=[json.dumps(led_mapping_type_command) + "\n"]
+            reader, reads=[self._to_json_line(led_mapping_type_command)]
         )
         await hc._async_manage_connection_once()
         self.assertEqual(hc.led_mapping_type, led_mapping_type)
@@ -531,7 +529,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         }
 
         self.assertEqual(hc.sessions, [])
-        self._add_expected_reads(reader, reads=[json.dumps(sessions_command) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(sessions_command)])
         await hc._async_manage_connection_once()
         self.assertEqual(hc.sessions, sessions)
 
@@ -549,7 +547,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self.assertEqual(hc.videomode, "2D")
 
         self._add_expected_reads(
-            reader, reads=[json.dumps(videomode_update_command) + "\n"]
+            reader, reads=[self._to_json_line(videomode_update_command)]
         )
         await hc._async_manage_connection_once()
         self.assertEqual(hc.videomode, videomode)
@@ -563,7 +561,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         leds_command = {"command": "leds-update", "data": {"leds": leds}}
 
         self.assertEqual(len(hc.leds), 254)
-        self._add_expected_reads(reader, reads=[json.dumps(leds_command) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(leds_command)])
         await hc._async_manage_connection_once()
         self.assertEqual(hc.leds, leds)
 
@@ -821,7 +819,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "data": {"enabled": False, "name": "SMOOTHING"},
         }
 
-        self._add_expected_reads(reader, reads=[json.dumps(component) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(component)])
         await hc._async_manage_connection_once()
         self.assertIsNone(received_default_json)
         self.assertEqual(received_component_json, component)
@@ -832,7 +830,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "command": "random-update",
         }
 
-        self._add_expected_reads(reader, reads=[json.dumps(random_update) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(random_update)])
         await hc._async_manage_connection_once()
 
         self.assertEqual(received_default_json, random_update)
@@ -862,7 +860,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         await hc.async_is_auth_required()
         self._verify_expected_writes(writer, writes=[self._to_json_line(auth_request)])
 
-        self._add_expected_reads(reader, reads=[json.dumps(auth_response) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(auth_response)])
         await hc._async_manage_connection_once()
         self.assertTrue(is_auth_required)
 
@@ -903,7 +901,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "command": "authorize-logout",
             "success": True,
         }
-        self._add_expected_reads(reader, reads=[json.dumps(auth_logout_out) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(auth_logout_out)])
         await hc._async_manage_connection_once()
         self.assertTrue(writer.close.called)
         self.assertTrue(writer.wait_closed.called)
@@ -977,7 +975,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._verify_expected_writes(writer, writes=[serverinfo_request_json])
 
         self.assertTrue(hc.is_connected)
-        self._add_expected_reads(reader, reads=[json.dumps(auth_logout_out) + "\n"])
+        self._add_expected_reads(reader, reads=[self._to_json_line(auth_logout_out)])
 
         hc.start()
         hc.join()
