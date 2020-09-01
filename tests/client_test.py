@@ -231,7 +231,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
 
         # Verify that post-disconnect the instance is preserved so next
         # connect() will re-join the same instance.
-        await hc.async_disconnect()
+        self.assertTrue(await hc.async_disconnect())
         self.assertTrue(writer.close.called)
         self.assertTrue(writer.wait_closed.called)
         self.assertFalse(hc.is_connected)
@@ -575,7 +575,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "priority": 50,
         }
 
-        await hc.async_set_color(**color_in)
+        self.assertTrue(await hc.async_set_color(**color_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(color_in)])
 
         color_in = {
@@ -589,7 +589,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "origin": const.DEFAULT_ORIGIN,
         }
 
-        await hc.async_set_color(**color_in)
+        self.assertTrue(await hc.async_set_color(**color_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(color_out)])
 
     async def test_set_effect(self):
@@ -602,7 +602,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "origin": "My Fancy App",
         }
 
-        await hc.async_set_effect(**effect_in)
+        self.assertTrue(await hc.async_set_effect(**effect_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(effect_in)])
 
         effect_in = {
@@ -616,7 +616,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "origin": const.DEFAULT_ORIGIN,
         }
 
-        await hc.async_set_effect(**effect_in)
+        self.assertTrue(await hc.async_set_effect(**effect_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(effect_out)])
 
     async def test_set_image(self):
@@ -632,7 +632,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "origin": "My Fancy App",
         }
 
-        await hc.async_set_image(**image_in)
+        self.assertTrue(await hc.async_set_image(**image_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(image_in)])
 
         image_in = {
@@ -653,7 +653,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "origin": const.DEFAULT_ORIGIN,
         }
 
-        await hc.async_set_image(**image_in)
+        self.assertTrue(await hc.async_set_image(**image_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(image_out)])
 
     async def test_clear(self):
@@ -664,9 +664,9 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "priority": 50,
         }
 
-        await hc.async_clear(**clear_in)
+        self.assertTrue(await hc.async_clear(**clear_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(clear_in)])
-        await hc.async_clear(priority=50)
+        self.assertTrue(await hc.async_clear(priority=50))
         self._verify_expected_writes(writer, writes=[self._to_json_line(clear_in)])
 
     async def test_set_adjustment(self):
@@ -674,9 +674,9 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         (reader, writer, hc) = await self._create_and_test_basic_connected_client()
         adjustment_in = {"command": "adjustment", "adjustment": {"gammaRed": 1.5}}
 
-        await hc.async_set_adjustment(**adjustment_in)
+        self.assertTrue(await hc.async_set_adjustment(**adjustment_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(adjustment_in)])
-        await hc.async_set_adjustment(adjustment={"gammaRed": 1.5})
+        self.assertTrue(await hc.async_set_adjustment(adjustment={"gammaRed": 1.5}))
         self._verify_expected_writes(writer, writes=[self._to_json_line(adjustment_in)])
 
     async def test_set_led_mapping_type(self):
@@ -687,11 +687,13 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "mappingType": "multicolor_mean",
         }
 
-        await hc.async_set_led_mapping_type(**led_mapping_type_in)
+        self.assertTrue(await hc.async_set_led_mapping_type(**led_mapping_type_in))
         self._verify_expected_writes(
             writer, writes=[self._to_json_line(led_mapping_type_in)]
         )
-        await hc.async_set_led_mapping_type(mappingType="multicolor_mean")
+        self.assertTrue(
+            await hc.async_set_led_mapping_type(mappingType="multicolor_mean")
+        )
         self._verify_expected_writes(
             writer, writes=[self._to_json_line(led_mapping_type_in)]
         )
@@ -701,9 +703,9 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         (reader, writer, hc) = await self._create_and_test_basic_connected_client()
         videomode_in = {"command": "videomode", "videoMode": "3DTAB"}
 
-        await hc.async_set_videomode(**videomode_in)
+        self.assertTrue(await hc.async_set_videomode(**videomode_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(videomode_in)])
-        await hc.async_set_videomode(videoMode="3DTAB")
+        self.assertTrue(await hc.async_set_videomode(videoMode="3DTAB"))
         self._verify_expected_writes(writer, writes=[self._to_json_line(videomode_in)])
 
     async def test_set_component(self):
@@ -718,9 +720,9 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "componentstate": componentstate,
         }
 
-        await hc.async_set_component(**component_in)
+        self.assertTrue(await hc.async_set_component(**component_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(component_in)])
-        await hc.async_set_component(componentstate=componentstate)
+        self.assertTrue(await hc.async_set_component(componentstate=componentstate))
         self._verify_expected_writes(writer, writes=[self._to_json_line(component_in)])
 
     async def test_set_sourceselect(self):
@@ -728,11 +730,11 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         (reader, writer, hc) = await self._create_and_test_basic_connected_client()
         sourceselect_in = {"command": "sourceselect", "priority": 50}
 
-        await hc.async_set_sourceselect(**sourceselect_in)
+        self.assertTrue(await hc.async_set_sourceselect(**sourceselect_in))
         self._verify_expected_writes(
             writer, writes=[self._to_json_line(sourceselect_in)]
         )
-        await hc.async_set_sourceselect(priority=50)
+        self.assertTrue(await hc.async_set_sourceselect(priority=50))
         self._verify_expected_writes(
             writer, writes=[self._to_json_line(sourceselect_in)]
         )
@@ -742,23 +744,23 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         (reader, writer, hc) = await self._create_and_test_basic_connected_client()
         start_in = {"command": "instance", "subcommand": "startInstance", "instance": 1}
 
-        await hc.async_start_instance(**start_in)
+        self.assertTrue(await hc.async_start_instance(**start_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
-        await hc.async_start_instance(instance=1)
+        self.assertTrue(await hc.async_start_instance(instance=1))
         self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
 
         stop_in = {"command": "instance", "subcommand": "stopInstance", "instance": 1}
 
-        await hc.async_stop_instance(**stop_in)
+        self.assertTrue(await hc.async_stop_instance(**stop_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
-        await hc.async_stop_instance(instance=1)
+        self.assertTrue(await hc.async_stop_instance(instance=1))
         self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
 
         switch_in = {"command": "instance", "subcommand": "switchTo", "instance": 1}
 
-        await hc.async_switch_instance(**switch_in)
+        self.assertTrue(await hc.async_switch_instance(**switch_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(switch_in)])
-        await hc.async_switch_instance(instance=1)
+        self.assertTrue(await hc.async_switch_instance(instance=1))
         self._verify_expected_writes(writer, writes=[self._to_json_line(switch_in)])
 
     async def test_start_stop_image_stream(self):
@@ -766,16 +768,16 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         (reader, writer, hc) = await self._create_and_test_basic_connected_client()
         start_in = {"command": "ledcolors", "subcommand": "imagestream-start"}
 
-        await hc.async_image_stream_start(**start_in)
+        self.assertTrue(await hc.async_image_stream_start(**start_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
-        await hc.async_image_stream_start()
+        self.assertTrue(await hc.async_image_stream_start())
         self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
 
         stop_in = {"command": "ledcolors", "subcommand": "imagestream-stop"}
 
-        await hc.async_image_stream_stop(**stop_in)
+        self.assertTrue(await hc.async_image_stream_stop(**stop_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
-        await hc.async_image_stream_stop()
+        self.assertTrue(await hc.async_image_stream_stop())
         self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
 
     async def test_start_stop_led_stream(self):
@@ -783,16 +785,16 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         (reader, writer, hc) = await self._create_and_test_basic_connected_client()
         start_in = {"command": "ledcolors", "subcommand": "ledstream-start"}
 
-        await hc.async_led_stream_start(**start_in)
+        self.assertTrue(await hc.async_led_stream_start(**start_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
-        await hc.async_led_stream_start()
+        self.assertTrue(await hc.async_led_stream_start())
         self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
 
         stop_in = {"command": "ledcolors", "subcommand": "ledstream-stop"}
 
-        await hc.async_led_stream_stop(**stop_in)
+        self.assertTrue(await hc.async_led_stream_stop(**stop_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
-        await hc.async_led_stream_stop()
+        self.assertTrue(await hc.async_led_stream_stop())
         self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
 
     async def test_callbacks(self):
@@ -857,7 +859,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "tan": 0,
         }
 
-        await hc.async_is_auth_required()
+        self.assertTrue(await hc.async_is_auth_required())
         self._verify_expected_writes(writer, writes=[self._to_json_line(auth_request)])
 
         self._add_expected_reads(reader, reads=[self._to_json_line(auth_response)])
@@ -874,9 +876,9 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "token": token,
         }
 
-        await hc.async_login(**auth_login_in)
+        self.assertTrue(await hc.async_login(**auth_login_in))
         self._verify_expected_writes(writer, writes=[self._to_json_line(auth_login_in)])
-        await hc.async_login(token=token)
+        self.assertTrue(await hc.async_login(token=token))
         self._verify_expected_writes(writer, writes=[self._to_json_line(auth_login_in)])
 
     async def test_async_logout(self):
@@ -887,11 +889,11 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "subcommand": "logout",
         }
 
-        await hc.async_logout(**auth_logout_in)
+        self.assertTrue(await hc.async_logout(**auth_logout_in))
         self._verify_expected_writes(
             writer, writes=[self._to_json_line(auth_logout_in)]
         )
-        await hc.async_logout()
+        self.assertTrue(await hc.async_logout())
         self._verify_expected_writes(
             writer, writes=[self._to_json_line(auth_logout_in)]
         )
@@ -920,7 +922,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "id": "T3c92",
         }
 
-        await hc.async_request_token(**request_token_in)
+        self.assertTrue(await hc.async_request_token(**request_token_in))
         self._verify_expected_writes(
             writer, writes=[self._to_json_line(request_token_in)]
         )
@@ -931,7 +933,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "comment": "Test",
         }
 
-        await hc.async_request_token(**small_request_token_in)
+        self.assertTrue(await hc.async_request_token(**small_request_token_in))
 
         # Do manual verification of the write calls to ensure the ID argument
         # gets set to some random value.
@@ -946,7 +948,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
 
         # Abort a request for a token.
         request_token_in["accept"] = False
-        await hc.async_request_token_abort(**request_token_in)
+        self.assertTrue(await hc.async_request_token_abort(**request_token_in))
         self._verify_expected_writes(
             writer, writes=[self._to_json_line(request_token_in)]
         )
@@ -997,8 +999,6 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             if name.startswith("async_"):
                 self.assertIn(name[len("async_") :], contents)
 
-    # TODO return code from awaits
-
     async def test_client_write_and_close_handles_network_issues(self):
         """Verify sending data does not throw exceptions."""
         (_, writer, hc) = await self._create_and_test_basic_connected_client()
@@ -1007,19 +1007,19 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         # propagating to the test.
 
         writer.write.side_effect = ConnectionError("Write exception")
-        await hc.async_image_stream_start()
+        self.assertFalse(await hc.async_image_stream_start())
         writer.write.side_effect = None
 
         writer.drain.side_effect = ConnectionError("Drain exception")
-        await hc.async_image_stream_start()
+        self.assertFalse(await hc.async_image_stream_start())
         writer.drain.side_effect = None
 
         writer.close.side_effect = ConnectionError("Close exception")
-        await hc.async_disconnect()
+        self.assertFalse(await hc.async_disconnect())
         writer.close.side_effect = None
 
         writer.wait_closed.side_effect = ConnectionError("Wait closed exception")
-        await hc.async_disconnect()
+        self.assertFalse(await hc.async_disconnect())
         writer.wait_closed.side_effect = None
 
     async def test_client_read_handles_network_issues(self):
