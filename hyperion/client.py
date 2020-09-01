@@ -15,7 +15,7 @@ _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.DEBUG)
 
 # TODO: Handle all kinds of connection failures during send (incl. exceptions raised during await)
-# TODO: Replace async_connect usage of auth.
+# TODO: Consider async_connect flow (should it do auth & switchto, or separate?). Flow between connect and background run?
 
 
 class HyperionClient:
@@ -56,9 +56,9 @@ class HyperionClient:
         self._reader = None
         self._writer = None
 
-    # ====================
+    # ===================
     # || Networking    ||
-    # ====================
+    # ===================
 
     @property
     def is_connected(self):
@@ -179,20 +179,41 @@ class HyperionClient:
     async def _async_disconnect_internal(self):
         """Close streams to the Hyperion server. Will be re-established."""
         self._is_connected = False
-        self._writer.close()
-        await self._writer.wait_closed()
+        try:
+            self._writer.close()
+            await self._writer.wait_closed()
+        except ConnectionError as exc:
+            _LOGGER.warning(
+                "Could not close connection cleanly for Hyperion (%s:%i): %s",
+                self._host,
+                self._port,
+                str(exc),
+            )
+            return False
+        return True
 
     async def async_disconnect(self, *args, **kwargs):
         """Close streams to the Hyperion server. Do not re-establish."""
-        await self._async_disconnect_internal()
+        result = await self._async_disconnect_internal()
         self._manage_connection = False
+        return result
 
     async def _async_send_json(self, request):
         """Send JSON to the server."""
         _LOGGER.debug("Send to server (%s:%i): %s", self._host, self._port, request)
         output = json.dumps(request, sort_keys=True).encode("UTF-8") + b"\n"
-        self._writer.write(output)
-        await self._writer.drain()
+        try:
+            self._writer.write(output)
+            await self._writer.drain()
+        except ConnectionError as exc:
+            _LOGGER.warning(
+                "Could not write data for Hyperion (%s:%i): %s",
+                self._host,
+                self._port,
+                str(exc),
+            )
+            return False
+        return True
 
     async def _async_safely_read_command(self):
         """Safely read a command from the stream."""
@@ -249,8 +270,10 @@ class HyperionClient:
                 % (self._host, self._port, instance)
             )
             await self._async_disconnect_internal()
+            return False
         else:
             self._instance = instance
+        return True
 
     async def _async_manage_connection_once(self):
         """Manage the bidirectional connection to the server."""
@@ -386,7 +409,7 @@ class HyperionClient:
                 const.KEY_SUBCOMMAND: const.KEY_TOKEN_REQUIRED,
             },
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     # =============================================================================
     # ** Login **
@@ -402,7 +425,7 @@ class HyperionClient:
                 const.KEY_SUBCOMMAND: const.KEY_LOGIN,
             },
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     # =============================================================================
     # ** Logout **
@@ -418,7 +441,7 @@ class HyperionClient:
                 const.KEY_SUBCOMMAND: const.KEY_LOGOUT,
             },
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     # ============================================================================
     # ** Request Token **
@@ -442,7 +465,7 @@ class HyperionClient:
             },
             soft={const.KEY_ID: random_token},
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     async def async_request_token_abort(self, *args, **kwargs):
         """Abort a request for an authorization token."""
@@ -454,7 +477,7 @@ class HyperionClient:
                 const.KEY_ACCEPT: False,
             },
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     # ====================
     # || Data API calls ||
@@ -482,7 +505,7 @@ class HyperionClient:
     async def async_set_adjustment(self, *args, **kwargs):
         """Request that a color be set."""
         data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_ADJUSTMENT})
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     # =====================================================================
     # ** Clear **
@@ -492,7 +515,7 @@ class HyperionClient:
     async def async_clear(self, *args, **kwargs):
         """Request that a priority be cleared."""
         data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_CLEAR})
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     # =====================================================================
     # ** Color **
@@ -506,7 +529,7 @@ class HyperionClient:
             hard={const.KEY_COMMAND: const.KEY_COLOR},
             soft={const.KEY_ORIGIN: self._origin},
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     # ==================================================================================
     # ** Component **
@@ -543,7 +566,7 @@ class HyperionClient:
         data = self._set_data(
             kwargs, hard={const.KEY_COMMAND: const.KEY_COMPONENTSTATE}
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     def is_on(
         self, components=[const.KEY_COMPONENTID_ALL, const.KEY_COMPONENTID_LEDDEVICE]
@@ -593,7 +616,7 @@ class HyperionClient:
             hard={const.KEY_COMMAND: const.KEY_EFFECT},
             soft={const.KEY_ORIGIN: self._origin},
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     # =================================================================================
     # ** Image **
@@ -607,7 +630,7 @@ class HyperionClient:
             hard={const.KEY_COMMAND: const.KEY_IMAGE},
             soft={const.KEY_ORIGIN: self._origin},
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     # ================================================================================
     # ** Image Streaming **
@@ -624,7 +647,7 @@ class HyperionClient:
                 const.KEY_SUBCOMMAND: const.KEY_IMAGE_STREAM_START,
             },
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     async def async_image_stream_stop(self, *args, **kwargs):
         """Request a live image stream to stop."""
@@ -635,7 +658,7 @@ class HyperionClient:
                 const.KEY_SUBCOMMAND: const.KEY_IMAGE_STREAM_STOP,
             },
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     # =================================================================================
     # ** Instances **
@@ -664,7 +687,7 @@ class HyperionClient:
                 const.KEY_SUBCOMMAND: const.KEY_START_INSTANCE,
             },
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     async def async_stop_instance(self, *args, **kwargs):
         """Stop an instance."""
@@ -675,7 +698,7 @@ class HyperionClient:
                 const.KEY_SUBCOMMAND: const.KEY_STOP_INSTANCE,
             },
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     async def async_switch_instance(self, *args, **kwargs):
         """Stop an instance."""
@@ -686,7 +709,7 @@ class HyperionClient:
                 const.KEY_SUBCOMMAND: const.KEY_SWITCH_TO,
             },
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     # =============================================================================
     # ** LEDs **
@@ -726,7 +749,7 @@ class HyperionClient:
     async def async_set_led_mapping_type(self, *args, **kwargs):
         """Request the LED mapping type be set."""
         data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_PROCESSING})
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     # ===================================================================================
     # ** Live LED Streaming **
@@ -743,7 +766,7 @@ class HyperionClient:
                 const.KEY_SUBCOMMAND: const.KEY_LED_STREAM_START,
             },
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     async def async_led_stream_stop(self, *args, **kwargs):
         """Request a live led stream to stop."""
@@ -754,7 +777,7 @@ class HyperionClient:
                 const.KEY_SUBCOMMAND: const.KEY_LED_STREAM_STOP,
             },
         )
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     # =================================================================================
     # ** Priorites **
@@ -806,7 +829,7 @@ class HyperionClient:
     async def async_set_sourceselect(self, *args, **kwargs):
         """Request the sourceselect be set."""
         data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_SOURCESELECT})
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
     # ================================================================================
     # ** Sessions **
@@ -865,7 +888,7 @@ class HyperionClient:
     async def async_set_videomode(self, *args, **kwargs):
         """Request the LED mapping type be set."""
         data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_VIDEOMODE})
-        await self._async_send_json(data)
+        return await self._async_send_json(data)
 
 
 class ThreadedHyperionClient(HyperionClient, threading.Thread):

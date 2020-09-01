@@ -996,3 +996,57 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         for name in contents:
             if name.startswith("async_"):
                 self.assertIn(name[len("async_") :], contents)
+
+    # TODO return code from awaits
+
+    async def test_client_write_and_close_handles_network_issues(self):
+        """Verify sending data does not throw exceptions."""
+        (_, writer, hc) = await self._create_and_test_basic_connected_client()
+
+        # Verify none of these write operations result in an exception
+        # propagating to the test.
+
+        writer.write.side_effect = ConnectionError("Write exception")
+        await hc.async_image_stream_start()
+        writer.write.side_effect = None
+
+        writer.drain.side_effect = ConnectionError("Drain exception")
+        await hc.async_image_stream_start()
+        writer.drain.side_effect = None
+
+        writer.close.side_effect = ConnectionError("Close exception")
+        await hc.async_disconnect()
+        writer.close.side_effect = None
+
+        writer.wait_closed.side_effect = ConnectionError("Wait closed exception")
+        await hc.async_disconnect()
+        writer.wait_closed.side_effect = None
+
+    async def test_client_read_handles_network_issues(self):
+        """Verify sending data does not throw exceptions."""
+
+        # Verify none of these read operations result in an exception
+        # propagating to the test.
+
+        (reader, _, hc) = await self._create_and_test_basic_connected_client()
+        reader.readline.side_effect = ConnectionError("Read exception")
+        await hc._async_manage_connection_once()
+        reader.readline.side_effect = None
+
+        (reader, _, hc) = await self._create_and_test_basic_connected_client()
+        reader.readline.side_effect = [""]
+        await hc._async_manage_connection_once()
+        reader.readline.side_effect = None
+
+    async def test_client_connect_handles_network_issues(self):
+        """Verify sending data does not throw exceptions."""
+
+        # Verify none of these connect operations result in an exception
+        # propagating to the test.
+
+        with asynctest.mock.patch(
+            "asyncio.open_connection",
+            side_effect=ConnectionError("Connection exception"),
+        ):
+            hc = client.HyperionClient(TEST_HOST, TEST_PORT, loop=self.loop)
+            self.assertFalse(await hc.async_connect())
