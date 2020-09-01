@@ -14,9 +14,6 @@ from hyperion import const
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.DEBUG)
 
-# TODO: Handle all kinds of connection failures during send (incl. exceptions raised during await)
-# TODO: Consider async_connect flow (should it do auth & switchto, or separate?). Flow between connect and background run?
-
 
 class HyperionClient:
     """Hyperion Client."""
