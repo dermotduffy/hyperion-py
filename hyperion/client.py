@@ -382,6 +382,11 @@ class HyperionClient:
     # || Helper calls ||
     # ==================
 
+    @property
+    def id(self):
+        """Return an ID representing this Hyperion client."""
+        return "%s:%i-%i" % (self._host, self._port, self._instance)
+
     def _set_data(self, data, hard=None, soft=None):
         output = soft or {}
         output.update(data)

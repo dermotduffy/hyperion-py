@@ -1050,3 +1050,9 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         ):
             hc = client.HyperionClient(TEST_HOST, TEST_PORT, loop=self.loop)
             self.assertFalse(await hc.async_connect())
+
+    async def test_client_id(self):
+        """Verify sending data does not throw exceptions."""
+
+        (_, _, hc) = await self._create_and_test_basic_connected_client()
+        self.assertTrue(hc.id, "%s:%i-%i" % (TEST_HOST, TEST_PORT, TEST_INSTANCE))
