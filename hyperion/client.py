@@ -33,8 +33,9 @@ class HyperionClient:
     ) -> None:
         """Initialize client."""
         _LOGGER.debug("HyperionClient initiated with: (%s:%i)", host, port)
-        self._default_callback = default_callback
-        self._callbacks = callbacks or {}
+
+        self.set_callbacks(callbacks or {})
+        self.set_default_callback(default_callback)
 
         self._host = host
         self._port = port
@@ -52,6 +53,14 @@ class HyperionClient:
         self._manage_connection_task = None
         self._reader = None
         self._writer = None
+
+    def set_callbacks(self, callbacks):
+        """Set the update callbacks."""
+        self._callbacks = callbacks
+
+    def set_default_callback(self, default_callback):
+        """Set the default callbacks."""
+        self._default_callback = default_callback
 
     # ===================
     # || Networking    ||
@@ -296,6 +305,7 @@ class HyperionClient:
             _LOGGER.warning(
                 "Failed Hyperion (%s:%i) command: %s", self._host, self._port, resp_json
             )
+            return
         elif (
             command == f"{const.KEY_COMPONENTS}-{const.KEY_UPDATE}"
             and const.KEY_DATA in resp_json

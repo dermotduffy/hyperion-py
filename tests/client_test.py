@@ -800,19 +800,19 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
     async def test_callbacks(self):
         """Test updating components."""
         received_default_json = None
-        received_component_json = None
+        received_json = None
 
         def default_callback(json):
             nonlocal received_default_json
             received_default_json = json
 
-        def component_callback(json):
-            nonlocal received_component_json
-            received_component_json = json
+        def callback(json):
+            nonlocal received_json
+            received_json = json
 
         (reader, writer, hc) = await self._create_and_test_basic_connected_client(
             default_callback=default_callback,
-            callbacks={"components-update": component_callback},
+            callbacks={"components-update": callback},
         )
 
         # === Flip a component.
@@ -821,22 +821,41 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "data": {"enabled": False, "name": "SMOOTHING"},
         }
 
+        # Make sure the callback was called.
         self._add_expected_reads(reader, reads=[self._to_json_line(component)])
         await hc._async_manage_connection_once()
         self.assertIsNone(received_default_json)
-        self.assertEqual(received_component_json, component)
+        self.assertEqual(received_json, component)
 
-        received_component_json = None
-
+        # Reset the callback variable, call with a new update that does not
+        # have a registered callback.
+        received_json = None
+        random_update_value = "random-update"
         random_update = {
-            "command": "random-update",
+            "command": random_update_value,
         }
 
         self._add_expected_reads(reader, reads=[self._to_json_line(random_update)])
         await hc._async_manage_connection_once()
 
         self.assertEqual(received_default_json, random_update)
-        self.assertIsNone(received_component_json)
+        self.assertIsNone(received_json)
+
+        # Now add a callback for that update.
+        hc.set_callbacks({random_update_value: callback})
+        self._add_expected_reads(reader, reads=[self._to_json_line(random_update)])
+        await hc._async_manage_connection_once()
+
+        self.assertEqual(received_json, random_update)
+
+        # Reset default callback variable.
+        received_default_json = None
+        hc.set_default_callback(None)
+
+        # Verify that the default callback is not called.
+        self._add_expected_reads(reader, reads=[self._to_json_line(component)])
+        await hc._async_manage_connection_once()
+        self.assertIsNone(received_default_json)
 
     async def test_is_auth_required(self):
         """Test determining if authorization is required."""
