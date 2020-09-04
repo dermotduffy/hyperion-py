@@ -221,7 +221,7 @@ class HyperionClient:
             return False
         return True
 
-    async def _async_safely_read_command(self):
+    async def _async_safely_read_command(self, timeout=True):
         """Safely read a command from the stream."""
         connection_error = False
         try:
@@ -304,7 +304,7 @@ class HyperionClient:
                 await asyncio.sleep(const.DEFAULT_CONNECTION_RETRY_DELAY)
                 return
 
-        resp_json = await self._async_safely_read_command()
+        resp_json = await self._async_safely_read_command(timeout=False)
         if not resp_json or not self._serverinfo:
             return
         command = resp_json[const.KEY_COMMAND]
