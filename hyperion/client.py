@@ -27,7 +27,7 @@ class HyperionClient:
         token: str = None,
         instance: int = 0,
         origin: str = const.DEFAULT_ORIGIN,
-        timeout_secs: int = const.DEFAULT_CONNECTION_TIMEOUT_SECS,
+        timeout_secs: int = const.DEFAULT_TIMEOUT_SECS,
         retry_secs=const.DEFAULT_CONNECTION_RETRY_DELAY,
         loop=None,
     ) -> None:
@@ -86,7 +86,7 @@ class HyperionClient:
         future_streams = asyncio.open_connection(self._host, self._port)
         try:
             self._reader, self._writer = await asyncio.wait_for(
-                future_streams, timeout=const.DEFAULT_CONNECTION_TIMEOUT_SECS
+                future_streams, timeout=self._timeout_secs
             )
         except (asyncio.TimeoutError, ConnectionError, OSError) as exc:
             _LOGGER.debug(
@@ -225,14 +225,22 @@ class HyperionClient:
         """Safely read a command from the stream."""
         connection_error = False
         try:
-            resp = await self._reader.readline()
+            future_resp = self._reader.readline()
+            resp = await asyncio.wait_for(future_resp, timeout=self._timeout_secs)
         except ConnectionError:
             connection_error = True
-
-        if connection_error or not resp:
             _LOGGER.warning(
                 "Connection to Hyperion lost (%s:%i) ...", self._host, self._port
             )
+        except asyncio.TimeoutError:
+            connection_error = True
+            _LOGGER.warning(
+                "Read from Hyperion timed out (%s:%i), disconnecting ...",
+                self._host,
+                self._port,
+            )
+
+        if connection_error or not resp:
             await self._async_disconnect_internal()
             return None
 
@@ -915,7 +923,7 @@ class ThreadedHyperionClient(HyperionClient, threading.Thread):
         token: str = None,
         instance: int = 0,
         origin: str = const.DEFAULT_ORIGIN,
-        timeout_secs: int = const.DEFAULT_CONNECTION_TIMEOUT_SECS,
+        timeout_secs: int = const.DEFAULT_TIMEOUT_SECS,
         retry_secs=const.DEFAULT_CONNECTION_RETRY_DELAY,
     ) -> None:
         """Initialize client."""
