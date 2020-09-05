@@ -224,9 +224,11 @@ class HyperionClient:
     async def _async_safely_read_command(self, timeout=True):
         """Safely read a command from the stream."""
         connection_error = False
+        timeout_secs = self._timeout_secs if timeout else None
+
         try:
             future_resp = self._reader.readline()
-            resp = await asyncio.wait_for(future_resp, timeout=self._timeout_secs)
+            resp = await asyncio.wait_for(future_resp, timeout=timeout_secs)
         except ConnectionError:
             connection_error = True
             _LOGGER.warning(
@@ -267,7 +269,7 @@ class HyperionClient:
             return None
         return resp_json
 
-    async def run(self):
+    def run(self):
         """Run connection management in background task."""
 
         async def manage(self):
