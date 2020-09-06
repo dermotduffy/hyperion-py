@@ -8,6 +8,7 @@ import logging
 import random
 import string
 import threading
+from typing import Any, Callable, Coroutine, Optional
 
 from hyperion import const
 
@@ -21,15 +22,15 @@ class HyperionClient:
     def __init__(
         self,
         host: str,
-        port: int,
-        default_callback: callable = None,
-        callbacks: list = None,
-        token: str = None,
+        port: int = const.DEFAULT_PORT,
+        default_callback: Optional[Callable] = None,
+        callbacks: Optional[dict] = None,
+        token: Optional[str] = None,
         instance: int = 0,
         origin: str = const.DEFAULT_ORIGIN,
         timeout_secs: int = const.DEFAULT_TIMEOUT_SECS,
         retry_secs=const.DEFAULT_CONNECTION_RETRY_DELAY,
-        loop=None,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
         """Initialize client."""
         _LOGGER.debug("HyperionClient initiated with: (%s:%i)", host, port)
@@ -47,18 +48,18 @@ class HyperionClient:
         self._is_connected = False
         self._loop = loop or asyncio.get_event_loop()
 
-        self._serverinfo = None
+        self._serverinfo: Optional[dict] = None
 
         self._manage_connection = True
-        self._manage_connection_task = None
-        self._reader = None
-        self._writer = None
+        self._manage_connection_task: Optional[asyncio.Task] = None
+        self._reader: Optional[asyncio.StreamReader] = None
+        self._writer: Optional[asyncio.StreamWriter] = None
 
-    def set_callbacks(self, callbacks):
+    def set_callbacks(self, callbacks: dict) -> None:
         """Set the update callbacks."""
         self._callbacks = callbacks
 
-    def set_default_callback(self, default_callback):
+    def set_default_callback(self, default_callback: Optional[Callable]) -> None:
         """Set the default callbacks."""
         self._default_callback = default_callback
 
@@ -67,21 +68,21 @@ class HyperionClient:
     # ===================
 
     @property
-    def is_connected(self):
+    def is_connected(self) -> bool:
         """Return server availability."""
         return self._is_connected
 
     @property
-    def instance(self):
+    def instance(self) -> int:
         """Return server instance."""
         return self._instance
 
     @property
-    def manage_connection(self):
+    def manage_connection(self) -> bool:
         """Whether the client is actively managing the connection."""
         return self._manage_connection
 
-    async def async_connect(self, *args, **kwargs):
+    async def async_connect(self, *args: Any, **kwargs: Any) -> bool:
         """Connect to the Hyperion server."""
         future_streams = asyncio.open_connection(self._host, self._port)
         try:
@@ -147,10 +148,10 @@ class HyperionClient:
             const.KEY_COMMAND: f"{const.KEY_CONNECTION}-{const.KEY_UPDATE}",
             const.KEY_CONNECTED: True,
         }
-        self._call_callbacks(data[const.KEY_COMMAND], data)
+        self._call_callbacks(str(data[const.KEY_COMMAND]), data)
         return True
 
-    async def _refresh_serverinfo(self):
+    async def _refresh_serverinfo(self) -> bool:
         # == Request: serverinfo ==
         # Request full state ('serverinfo') and subscribe to relevant
         # future updates to keep this object state accurate without the need to
@@ -189,10 +190,14 @@ class HyperionClient:
         self._update_serverinfo(resp_json[const.KEY_INFO])
         return True
 
-    async def _async_disconnect_internal(self):
+    async def _async_disconnect_internal(self) -> bool:
         """Close streams to the Hyperion server. Will be re-established."""
         self._is_connected = False
         clean_disconnect = True
+
+        if not self._writer:
+            return clean_disconnect
+
         try:
             self._writer.close()
             await self._writer.wait_closed()
@@ -210,17 +215,20 @@ class HyperionClient:
             const.KEY_COMMAND: f"{const.KEY_CONNECTION}-{const.KEY_UPDATE}",
             const.KEY_CONNECTED: False,
         }
-        self._call_callbacks(data[const.KEY_COMMAND], data)
+        self._call_callbacks(str(data[const.KEY_COMMAND]), data)
         return clean_disconnect
 
-    async def async_disconnect(self, *args, **kwargs):
+    async def async_disconnect(self, *args: Any, **kwargs: Any) -> bool:
         """Close streams to the Hyperion server. Do not re-establish."""
         result = await self._async_disconnect_internal()
         self._manage_connection = False
         return result
 
-    async def _async_send_json(self, request):
+    async def _async_send_json(self, request: dict) -> bool:
         """Send JSON to the server."""
+        if not self._writer:
+            return False
+
         _LOGGER.debug("Send to server (%s:%i): %s", self._host, self._port, request)
         output = json.dumps(request, sort_keys=True).encode("UTF-8") + b"\n"
         try:
@@ -236,8 +244,11 @@ class HyperionClient:
             return False
         return True
 
-    async def _async_safely_read_command(self, timeout=True):
+    async def _async_safely_read_command(self, timeout: bool = True) -> Optional[dict]:
         """Safely read a command from the stream."""
+        if not self._reader:
+            return None
+
         connection_error = False
         timeout_secs = self._timeout_secs if timeout else None
 
@@ -284,7 +295,7 @@ class HyperionClient:
             return None
         return resp_json
 
-    def run(self):
+    def run(self) -> None:
         """Run connection management in background task."""
 
         async def manage(self):
@@ -293,7 +304,7 @@ class HyperionClient:
 
         self._manage_connection_task = self._loop.create_task(manage(self))
 
-    async def _change_instance(self, instance):
+    async def _change_instance(self, instance: int) -> bool:
         if not await self._refresh_serverinfo():
             _LOGGER.warning(
                 "Could not reload state after instance change on "
@@ -306,7 +317,7 @@ class HyperionClient:
             self._instance = instance
         return True
 
-    async def _async_manage_connection_once(self):
+    async def _async_manage_connection_once(self) -> None:
         """Manage the bidirectional connection to the server."""
         if not self._is_connected:
             if not await self.async_connect():
@@ -414,7 +425,7 @@ class HyperionClient:
     # || Helper calls ||
     # ==================
 
-    def _call_callbacks(self, command, json):
+    def _call_callbacks(self, command: str, json: dict) -> None:
         """Call the relevant callbacks for the given command."""
         if command in self._callbacks:
             self._callbacks[command](json)
@@ -422,11 +433,11 @@ class HyperionClient:
             self._default_callback(json)
 
     @property
-    def id(self):
+    def id(self) -> str:
         """Return an ID representing this Hyperion client."""
         return "%s:%i-%i" % (self._host, self._port, self._instance)
 
-    def _set_data(self, data, hard=None, soft=None):
+    def _set_data(self, data: dict, hard: dict = None, soft: dict = None) -> dict:
         output = soft or {}
         output.update(data)
         output.update(hard or {})
@@ -441,7 +452,7 @@ class HyperionClient:
     # https://docs.hyperion-project.org/en/json/Authorization.html#authorization-check
     # ================================================================================
 
-    async def async_is_auth_required(self, *args, **kwargs):
+    async def async_is_auth_required(self, *args: Any, **kwargs: Any) -> bool:
         """Determine if authorization is required."""
         data = self._set_data(
             kwargs,
@@ -457,7 +468,7 @@ class HyperionClient:
     # https://docs.hyperion-project.org/en/json/Authorization.html#login-with-token
     # =============================================================================
 
-    async def async_login(self, *args, **kwargs):
+    async def async_login(self, *args: Any, **kwargs: Any) -> bool:
         """Login with token."""
         data = self._set_data(
             kwargs,
@@ -473,7 +484,7 @@ class HyperionClient:
     # https://docs.hyperion-project.org/en/json/Authorization.html#logout
     # =============================================================================
 
-    async def async_logout(self, *args, **kwargs):
+    async def async_logout(self, *args: Any, **kwargs: Any) -> bool:
         """Logout."""
         data = self._set_data(
             kwargs,
@@ -489,7 +500,7 @@ class HyperionClient:
     # https://docs.hyperion-project.org/en/json/Authorization.html#request-a-token
     # ============================================================================
 
-    async def async_request_token(self, *args, **kwargs):
+    async def async_request_token(self, *args: Any, **kwargs: Any) -> bool:
         """Request an authorization token.
 
         The user will accept/deny the token request on the Web UI.
@@ -508,7 +519,7 @@ class HyperionClient:
         )
         return await self._async_send_json(data)
 
-    async def async_request_token_abort(self, *args, **kwargs):
+    async def async_request_token_abort(self, *args: Any, **kwargs: Any) -> bool:
         """Abort a request for an authorization token."""
         data = self._set_data(
             kwargs,
@@ -529,14 +540,15 @@ class HyperionClient:
     # ================
 
     @property
-    def adjustment(self):
+    def adjustment(self) -> dict:
         """Return adjustment."""
         return self._get_serverinfo_value(const.KEY_ADJUSTMENT)
 
-    def _update_adjustment(self, adjustment):
+    def _update_adjustment(self, adjustment: dict) -> None:
         """Update adjustment."""
         if (
-            type(adjustment) != list
+            self._serverinfo is None
+            or type(adjustment) != list
             or len(adjustment) != 1
             or type(adjustment[0]) != dict
         ):
@@ -553,7 +565,7 @@ class HyperionClient:
     # Set: https://docs.hyperion-project.org/en/json/Control.html#clear
     # =====================================================================
 
-    async def async_clear(self, *args, **kwargs):
+    async def async_clear(self, *args: Any, **kwargs: Any) -> bool:
         """Request that a priority be cleared."""
         data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_CLEAR})
         return await self._async_send_json(data)
@@ -563,7 +575,7 @@ class HyperionClient:
     # Set: https://docs.hyperion-project.org/en/json/Control.html#set-color
     # =====================================================================
 
-    async def async_set_color(self, *args, **kwargs):
+    async def async_set_color(self, *args: Any, **kwargs: Any) -> bool:
         """Request that a color be set."""
         data = self._set_data(
             kwargs,
@@ -580,13 +592,17 @@ class HyperionClient:
     # ==================================================================================
 
     @property
-    def components(self):
+    def components(self) -> dict:
         """Return components."""
         return self._get_serverinfo_value(const.KEY_COMPONENTS)
 
-    def _update_component(self, new_component):
+    def _update_component(self, new_component: dict) -> None:
         """Update full Hyperion state."""
-        if type(new_component) != dict or const.KEY_NAME not in new_component:
+        if (
+            self._serverinfo is None
+            or type(new_component) != dict
+            or const.KEY_NAME not in new_component
+        ):
             return
         new_components = self._serverinfo.get(const.KEY_COMPONENTS, [])
         for component in new_components:
@@ -602,7 +618,7 @@ class HyperionClient:
         else:
             new_components.append(new_component)
 
-    async def async_set_component(self, *args, **kwargs):
+    async def async_set_component(self, *args: Any, **kwargs: Any) -> bool:
         """Request that a color be set."""
         data = self._set_data(
             kwargs, hard={const.KEY_COMMAND: const.KEY_COMPONENTSTATE}
@@ -610,8 +626,9 @@ class HyperionClient:
         return await self._async_send_json(data)
 
     def is_on(
-        self, components=[const.KEY_COMPONENTID_ALL, const.KEY_COMPONENTID_LEDDEVICE]
-    ):
+        self,
+        components: list = [const.KEY_COMPONENTID_ALL, const.KEY_COMPONENTID_LEDDEVICE],
+    ) -> bool:
         """Determine if components are on."""
         if not components:
             return False
@@ -640,17 +657,17 @@ class HyperionClient:
     # ==================================================================================
 
     @property
-    def effects(self):
+    def effects(self) -> dict:
         """Return effects."""
         return self._get_serverinfo_value(const.KEY_EFFECTS)
 
-    def _update_effects(self, effects):
+    def _update_effects(self, effects: dict) -> None:
         """Update effects."""
-        if type(effects) != list:
+        if self._serverinfo is None or type(effects) != list:
             return
         self._serverinfo[const.KEY_EFFECTS] = effects
 
-    async def async_set_effect(self, *args, **kwargs):
+    async def async_set_effect(self, *args: Any, **kwargs: Any) -> bool:
         """Request that an effect be set."""
         data = self._set_data(
             kwargs,
@@ -664,7 +681,7 @@ class HyperionClient:
     # Set: https://docs.hyperion-project.org/en/json/Control.html#set-image
     # =================================================================================
 
-    async def async_set_image(self, *args, **kwargs):
+    async def async_set_image(self, *args: Any, **kwargs: Any) -> bool:
         """Request that an image be set."""
         data = self._set_data(
             kwargs,
@@ -679,7 +696,7 @@ class HyperionClient:
     # Set: https://docs.hyperion-project.org/en/json/Control.html#live-image-stream
     # ================================================================================
 
-    async def async_image_stream_start(self, *args, **kwargs):
+    async def async_image_stream_start(self, *args: Any, **kwargs: Any) -> bool:
         """Request a live image stream to start."""
         data = self._set_data(
             kwargs,
@@ -690,7 +707,7 @@ class HyperionClient:
         )
         return await self._async_send_json(data)
 
-    async def async_image_stream_stop(self, *args, **kwargs):
+    async def async_image_stream_stop(self, *args: Any, **kwargs: Any) -> bool:
         """Request a live image stream to stop."""
         data = self._set_data(
             kwargs,
@@ -709,17 +726,17 @@ class HyperionClient:
     # =================================================================================
 
     @property
-    def instances(self):
+    def instances(self) -> dict:
         """Return instances."""
         return self._get_serverinfo_value(const.KEY_INSTANCE)
 
-    def _update_instances(self, instances):
+    def _update_instances(self, instances: dict) -> None:
         """Update instances."""
-        if type(instances) != list:
+        if self._serverinfo is None or type(instances) != list:
             return
         self._serverinfo[const.KEY_INSTANCE] = instances
 
-    async def async_start_instance(self, *args, **kwargs):
+    async def async_start_instance(self, *args: Any, **kwargs: Any) -> bool:
         """Start an instance."""
         data = self._set_data(
             kwargs,
@@ -730,7 +747,7 @@ class HyperionClient:
         )
         return await self._async_send_json(data)
 
-    async def async_stop_instance(self, *args, **kwargs):
+    async def async_stop_instance(self, *args: Any, **kwargs: Any) -> bool:
         """Stop an instance."""
         data = self._set_data(
             kwargs,
@@ -741,7 +758,7 @@ class HyperionClient:
         )
         return await self._async_send_json(data)
 
-    async def async_switch_instance(self, *args, **kwargs):
+    async def async_switch_instance(self, *args: Any, **kwargs: Any) -> bool:
         """Stop an instance."""
         data = self._set_data(
             kwargs,
@@ -759,13 +776,13 @@ class HyperionClient:
     # =============================================================================
 
     @property
-    def leds(self):
+    def leds(self) -> dict:
         """Return LEDs."""
         return self._get_serverinfo_value(const.KEY_LEDS)
 
-    def _update_leds(self, leds):
+    def _update_leds(self, leds: dict) -> None:
         """Update LEDs."""
-        if type(leds) != list:
+        if self._serverinfo is None or type(leds) != list:
             return
         self._serverinfo[const.KEY_LEDS] = leds
 
@@ -777,17 +794,17 @@ class HyperionClient:
     # ====================================================================================
 
     @property
-    def led_mapping_type(self):
+    def led_mapping_type(self) -> str:
         """Return LED mapping type."""
         return self._get_serverinfo_value(const.KEY_LED_MAPPING_TYPE)
 
-    def _update_led_mapping_type(self, led_mapping_type):
+    def _update_led_mapping_type(self, led_mapping_type: str) -> None:
         """Update LED mapping  type."""
-        if type(led_mapping_type) != str:
+        if self._serverinfo is None or type(led_mapping_type) != str:
             return
         self._serverinfo[const.KEY_LED_MAPPING_TYPE] = led_mapping_type
 
-    async def async_set_led_mapping_type(self, *args, **kwargs):
+    async def async_set_led_mapping_type(self, *args: Any, **kwargs: Any) -> bool:
         """Request the LED mapping type be set."""
         data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_PROCESSING})
         return await self._async_send_json(data)
@@ -798,7 +815,7 @@ class HyperionClient:
     # Set: https://docs.hyperion-project.org/en/json/Control.html#live-led-color-stream
     # ====================================================================================
 
-    async def async_led_stream_start(self, *args, **kwargs):
+    async def async_led_stream_start(self, *args: Any, **kwargs: Any) -> bool:
         """Request a live led stream to start."""
         data = self._set_data(
             kwargs,
@@ -809,7 +826,7 @@ class HyperionClient:
         )
         return await self._async_send_json(data)
 
-    async def async_led_stream_stop(self, *args, **kwargs):
+    async def async_led_stream_stop(self, *args: Any, **kwargs: Any) -> bool:
         """Request a live led stream to stop."""
         data = self._set_data(
             kwargs,
@@ -827,18 +844,18 @@ class HyperionClient:
     # =================================================================================
 
     @property
-    def priorities(self):
+    def priorities(self) -> dict:
         """Return priorites."""
         return self._get_serverinfo_value(const.KEY_PRIORITIES)
 
-    def _update_priorities(self, priorities):
+    def _update_priorities(self, priorities: dict) -> None:
         """Update priorites."""
-        if type(priorities) != list:
+        if self._serverinfo is None or type(priorities) != list:
             return
         self._serverinfo[const.KEY_PRIORITIES] = priorities
 
     @property
-    def visible_priority(self):
+    def visible_priority(self) -> Optional[dict]:
         """Return the visible priority, if any."""
         # The visible priority is supposed to be the first returned by the
         # API, but due to a bug the ordering is incorrect search for it
@@ -857,17 +874,17 @@ class HyperionClient:
     # ======================================================================================================
 
     @property
-    def priorities_autoselect(self):
+    def priorities_autoselect(self) -> bool:
         """Return priorites."""
         return self._get_serverinfo_value(const.KEY_PRIORITIES_AUTOSELECT)
 
-    def _update_priorities_autoselect(self, priorities_autoselect):
+    def _update_priorities_autoselect(self, priorities_autoselect: bool) -> None:
         """Update priorites."""
-        if type(priorities_autoselect) != bool:
+        if self._serverinfo is None or type(priorities_autoselect) != bool:
             return
         self._serverinfo[const.KEY_PRIORITIES_AUTOSELECT] = priorities_autoselect
 
-    async def async_set_sourceselect(self, *args, **kwargs):
+    async def async_set_sourceselect(self, *args: Any, **kwargs: Any) -> bool:
         """Request the sourceselect be set."""
         data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_SOURCESELECT})
         return await self._async_send_json(data)
@@ -879,13 +896,13 @@ class HyperionClient:
     # ================================================================================
 
     @property
-    def sessions(self):
+    def sessions(self) -> Optional[dict]:
         """Return sessions."""
         return self._get_serverinfo_value(const.KEY_SESSIONS)
 
-    def _update_sessions(self, sessions):
+    def _update_sessions(self, sessions) -> None:
         """Update sessions."""
-        if type(sessions) != list:
+        if self._serverinfo is None or type(sessions) != list:
             return
         self._serverinfo[const.KEY_SESSIONS] = sessions
 
@@ -895,15 +912,15 @@ class HyperionClient:
     # =====================================================================
 
     @property
-    def serverinfo(self):
+    def serverinfo(self) -> Optional[dict]:
         """Return current serverinfo."""
         return self._serverinfo
 
-    def _update_serverinfo(self, state):
+    def _update_serverinfo(self, state: dict) -> None:
         """Update full Hyperion state."""
         self._serverinfo = state
 
-    def _get_serverinfo_value(self, key):
+    def _get_serverinfo_value(self, key: str) -> Any:
         """Get a value from serverinfo structure given key."""
         if not self._serverinfo:
             return None
@@ -917,16 +934,16 @@ class HyperionClient:
     # ==================================================================================
 
     @property
-    def videomode(self):
+    def videomode(self) -> Optional[str]:
         """Return videomode."""
         return self._get_serverinfo_value(const.KEY_VIDEOMODE)
 
-    def _update_videomode(self, videomode):
+    def _update_videomode(self, videomode: str) -> None:
         """Update videomode."""
         if self._serverinfo:
             self._serverinfo[const.KEY_VIDEOMODE] = videomode
 
-    async def async_set_videomode(self, *args, **kwargs):
+    async def async_set_videomode(self, *args: Any, **kwargs: Any) -> bool:
         """Request the LED mapping type be set."""
         data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_VIDEOMODE})
         return await self._async_send_json(data)
@@ -938,10 +955,10 @@ class ThreadedHyperionClient(HyperionClient, threading.Thread):
     def __init__(
         self,
         host: str,
-        port: int,
-        default_callback: callable = None,
-        callbacks: list = None,
-        token: str = None,
+        port: int = const.DEFAULT_PORT,
+        default_callback: Optional[Callable] = None,
+        callbacks: Optional[dict] = None,
+        token: Optional[str] = None,
         instance: int = 0,
         origin: str = const.DEFAULT_ORIGIN,
         timeout_secs: int = const.DEFAULT_TIMEOUT_SECS,
@@ -969,7 +986,7 @@ class ThreadedHyperionClient(HyperionClient, threading.Thread):
                 new_name = name[len("async_") :]
                 self._register_sync_call(new_name, value)
 
-    def _register_sync_call(self, new_name, value):
+    def _register_sync_call(self, new_name: str, value: Coroutine) -> None:
         """Register a sync version of an async call."""
         setattr(
             self,
@@ -977,14 +994,14 @@ class ThreadedHyperionClient(HyperionClient, threading.Thread):
             lambda *args, **kwargs: self._async_wrapper(value, *args, **kwargs),
         )
 
-    def _async_wrapper(self, coro, *args, **kwargs):
+    def _async_wrapper(self, coro, *args: Any, **kwargs: Any) -> Any:
         """Convert a async call to synchronous by running it in the local event loop."""
         task = coro(*args, **kwargs)
         done, _ = asyncio.get_event_loop().run_until_complete(asyncio.wait([task]))
         if done:
             return done.pop().result()
 
-    def run(self):
+    def run(self) -> None:
         """Run connection management in this thread."""
 
         async def manage(self):
