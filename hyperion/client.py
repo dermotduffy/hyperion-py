@@ -997,7 +997,7 @@ class ThreadedHyperionClient(HyperionClient, threading.Thread):
     def _async_wrapper(self, coro, *args: Any, **kwargs: Any) -> Any:
         """Convert a async call to synchronous by running it in the local event loop."""
         task = coro(*args, **kwargs)
-        done, _ = asyncio.get_event_loop().run_until_complete(asyncio.wait([task]))
+        done, _ = self._loop.run_until_complete(asyncio.wait([task]))
         if done:
             return done.pop().result()
 
