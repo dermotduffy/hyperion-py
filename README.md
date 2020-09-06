@@ -132,7 +132,7 @@ non-async versions (without the `async_` on the method names shown above).
 
 ### Example use of Threaded client
 
-```
+```python
 #!/usr/bin/python
 
 from hyperion import client, const
