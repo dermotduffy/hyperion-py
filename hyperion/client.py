@@ -141,6 +141,13 @@ class HyperionClient:
 
         self._manage_connection = True
         self._is_connected = True
+
+        # Call callback for connection.
+        data = {
+            const.KEY_COMMAND: f"{const.KEY_CONNECTION}-{const.KEY_UPDATE}",
+            const.KEY_CONNECTED: True,
+        }
+        self._call_callbacks(data[const.KEY_COMMAND], data)
         return True
 
     async def _refresh_serverinfo(self):
@@ -185,6 +192,7 @@ class HyperionClient:
     async def _async_disconnect_internal(self):
         """Close streams to the Hyperion server. Will be re-established."""
         self._is_connected = False
+        clean_disconnect = True
         try:
             self._writer.close()
             await self._writer.wait_closed()
@@ -195,8 +203,16 @@ class HyperionClient:
                 self._port,
                 str(exc),
             )
-            return False
-        return True
+            clean_disconnect = False
+
+        # Call callback for disconnection.
+        data = {
+            const.KEY_COMMAND: f"{const.KEY_CONNECTION}-{const.KEY_UPDATE}",
+            const.KEY_CONNECTED: False,
+        }
+        self._call_callbacks(data[const.KEY_COMMAND], data)
+
+        return clean_disconnect
 
     async def async_disconnect(self, *args, **kwargs):
         """Close streams to the Hyperion server. Do not re-establish."""
@@ -393,14 +409,18 @@ class HyperionClient:
         elif command == f"{const.KEY_AUTHORIZE_LOGOUT}":
             await self.async_disconnect()
 
-        if command in self._callbacks:
-            self._callbacks[command](resp_json)
-        elif self._default_callback is not None:
-            self._default_callback(resp_json)
+        self._call_callbacks(command, resp_json)
 
     # ==================
     # || Helper calls ||
     # ==================
+
+    def _call_callbacks(self, command, json):
+        """Call the relevant callbacks for the given command."""
+        if command in self._callbacks:
+            self._callbacks[command](json)
+        elif self._default_callback is not None:
+            self._default_callback(json)
 
     @property
     def id(self):

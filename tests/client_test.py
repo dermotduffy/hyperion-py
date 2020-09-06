@@ -801,6 +801,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         """Test updating components."""
         received_default_json = None
         received_json = None
+        connection_json = None
 
         def default_callback(json):
             nonlocal received_default_json
@@ -810,9 +811,20 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             nonlocal received_json
             received_json = json
 
+        def connection_callback(json):
+            nonlocal connection_json
+            connection_json = json
+
         (reader, writer, hc) = await self._create_and_test_basic_connected_client(
             default_callback=default_callback,
-            callbacks={"components-update": callback},
+            callbacks={
+                "components-update": callback,
+                "connection-update": connection_callback,
+            },
+        )
+
+        self.assertEqual(
+            connection_json, {"command": "connection-update", "connected": True}
         )
 
         # === Flip a component.
@@ -856,6 +868,14 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self._add_expected_reads(reader, reads=[self._to_json_line(component)])
         await hc._async_manage_connection_once()
         self.assertIsNone(received_default_json)
+
+        # Verify disconnection callback.
+        hc.set_callbacks({"connection-update": connection_callback})
+        connection_json = None
+        self.assertTrue(await hc.async_disconnect())
+        self.assertEqual(
+            connection_json, {"command": "connection-update", "connected": False}
+        )
 
     async def test_is_auth_required(self):
         """Test determining if authorization is required."""
