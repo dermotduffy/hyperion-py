@@ -211,7 +211,6 @@ class HyperionClient:
             const.KEY_CONNECTED: False,
         }
         self._call_callbacks(data[const.KEY_COMMAND], data)
-
         return clean_disconnect
 
     async def async_disconnect(self, *args, **kwargs):
