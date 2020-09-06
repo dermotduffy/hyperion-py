@@ -113,8 +113,8 @@ if __name__ == "__main__":
     hyperion_client = client.HyperionClient(HOST, default_callback=callback)
     asyncio.get_event_loop().run_until_complete(hyperion_client.async_connect())
 
-    # Run in "background".
-    hyperion_client.run()
+    # Start client in "background".
+    hyperion_client.start_background_task()
     asyncio.get_event_loop().run_forever()
 ```
 

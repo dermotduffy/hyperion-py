@@ -295,7 +295,7 @@ class HyperionClient:
             return None
         return resp_json
 
-    def run(self) -> None:
+    def start_background_task(self) -> None:
         """Run connection management in background task."""
 
         async def manage(self):
