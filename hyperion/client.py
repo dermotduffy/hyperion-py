@@ -94,7 +94,7 @@ class HyperionClient:
             )
             return False
 
-        _LOGGER.debug(
+        _LOGGER.info(
             "Connected to Hyperion server: (%s:%i)",
             self._host,
             self._port,
@@ -248,26 +248,30 @@ class HyperionClient:
         if not self._reader:
             return None
 
-        connection_error = False
         timeout_secs = self._timeout_secs if timeout else None
 
         try:
             future_resp = self._reader.readline()
             resp = await asyncio.wait_for(future_resp, timeout=timeout_secs)
         except ConnectionError:
-            connection_error = True
             _LOGGER.warning(
                 "Connection to Hyperion lost (%s:%i) ...", self._host, self._port
             )
+            await self._async_disconnect_internal()
+            return None
         except asyncio.TimeoutError:
-            connection_error = True
             _LOGGER.warning(
                 "Read from Hyperion timed out (%s:%i), disconnecting ...",
                 self._host,
                 self._port,
             )
+            await self._async_disconnect_internal()
+            return None
 
-        if connection_error or not resp:
+        if not resp:
+            _LOGGER.warning(
+                "Connection to Hyperion lost (%s:%i) ...", self._host, self._port
+            )
             await self._async_disconnect_internal()
             return None
 
@@ -320,7 +324,7 @@ class HyperionClient:
         """Manage the bidirectional connection to the server."""
         if not self._is_connected:
             if not await self.async_connect():
-                _LOGGER.warning(
+                _LOGGER.info(
                     "Could not estalish valid connection to Hyperion (%s:%i), "
                     "retrying in %i seconds...",
                     self._host,
