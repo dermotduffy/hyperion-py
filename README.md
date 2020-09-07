@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.com/dermotduffy/hyperion-py.svg?branch=master)](https://travis-ci.com/dermotduffy/hyperion-py)
+
 # Hyperion Library
 
 Python library for
