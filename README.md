@@ -1,3 +1,5 @@
+[![PyPi](https://img.shields.io/pypi/v/hyperion-py.svg)](https://pypi.org/project/hyperion-py/)
+[![PyPi](https://img.shields.io/pypi/pyversions/hyperion-py.svg)](https://pypi.org/project/hyperion-py/)
 [![Build Status](https://travis-ci.com/dermotduffy/hyperion-py.svg?branch=master)](https://travis-ci.com/dermotduffy/hyperion-py)
 
 # Hyperion Library
