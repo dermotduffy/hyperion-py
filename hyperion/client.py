@@ -13,7 +13,6 @@ from typing import Any, Callable, Coroutine, Optional
 from hyperion import const
 
 _LOGGER = logging.getLogger(__name__)
-_LOGGER.setLevel(logging.DEBUG)
 
 
 class HyperionClient:
