@@ -6,3 +6,5 @@ python:
 cache: pip
 script:
   - pytest --cov-report term --cov=hyperion
+after_success:
+  - codecov
