@@ -6,4 +6,4 @@ cache: pip
 script:
   - pytest --cov-report term --cov=hyperion
 after_success:
-  - codecov
+  - codecov --env TRAVIS_OS_NAME
