@@ -3,6 +3,7 @@
 
 import asynctest
 import asyncio
+import inspect
 import json
 import os
 import unittest
@@ -1180,3 +1181,16 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         hc._manage_connection_task = asynctest.Mock()
         with self.assertRaises(client.HyperionClientConnectAfterStartError):
             await hc.async_connect()
+
+    async def test_async_send_calls_have_await_call(self):
+        """Verify async_send_* methods have an async_* pair."""
+        for name, value in inspect.getmembers(client.HyperionClient):
+            if name.startswith("async_send_") and callable(value):
+                new_name = "async_" + name[len("async_send_") :]
+                wrapper = getattr(client.HyperionClient, new_name, None)
+                self.assertIsNotNone(wrapper)
+
+                # wrapper.func -> Returns a partial for AwaitResponseWrapper.__call__()
+                #     .__self__ -> AwaitResponseWrapper
+                #         ._coro -> The wrapped coroutine within AwaitResponseWrapper.
+                self.assertEqual(wrapper.func.__self__._coro, value)
