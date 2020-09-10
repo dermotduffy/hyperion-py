@@ -17,35 +17,39 @@ All API calls can be found in
 [client.py](https://github.com/dermotduffy/hyperion-py/blob/master/hyperion/client.py).
 All async calls start with `async_`.
 
-### Calls
+### Connection & Disconnection
 
-   * async_connect
-   * async_disconnect
-   * [async_is_auth_required](https://docs.hyperion-project.org/en/json/Authorization.html#authorization-check)
-   * [async_login](https://docs.hyperion-project.org/en/json/Authorization.html#login-with-token)
-   * [async_logout](https://docs.hyperion-project.org/en/json/Authorization.html#logout)
-   * [async_request_token](https://docs.hyperion-project.org/en/json/Authorization.html#request-a-token)
-   * [async_request_token_abort](https://docs.hyperion-project.org/en/json/Authorization.html#request-a-token)
-   * [async_set_adjustment](https://docs.hyperion-project.org/en/json/Control.html#adjustments)
-   * [async_clear](https://docs.hyperion-project.org/en/json/Control.html#clear)
-   * [async_set_color](https://docs.hyperion-project.org/en/json/Control.html#set-color)
-   * [async_set_component](https://docs.hyperion-project.org/en/json/Control.html#control-components)
-   * [async_set_effect](https://docs.hyperion-project.org/en/json/Control.html#set-effect)
-   * [async_set_image](https://docs.hyperion-project.org/en/json/Control.html#set-image)
-   * [async_image_stream_start](https://docs.hyperion-project.org/en/json/Control.html#live-image-stream)
-   * [async_image_stream_stop](https://docs.hyperion-project.org/en/json/Control.html#live-image-stream)
-   * [async_start_instance](https://docs.hyperion-project.org/en/json/Control.html#control-instances)
-   * [async_stop_instance](https://docs.hyperion-project.org/en/json/Control.html#control-instances)
-   * [async_switch_instance](https://docs.hyperion-project.org/en/json/Control.html#api-instance-handling)
-   * [async_set_led_mapping_type](https://docs.hyperion-project.org/en/json/Control.html#led-mapping)
-   * [async_led_stream_start](https://docs.hyperion-project.org/en/json/Control.html#live-led-color-stream)
-   * [async_led_stream_stop](https://docs.hyperion-project.org/en/json/Control.html#live-led-color-stream)
-   * [async_set_sourceselect](https://docs.hyperion-project.org/en/json/Control.html#source-selection)
-   * [async_set_videomode](https://docs.hyperion-project.org/en/json/Control.html#video-mode)
+   * async_connect()
+   * async_disconnect()
 
-Note that the `command` and `subcommand` keys shown in the above documentation
-will automatically be included in the calls the client sends, and do not need
-to be specified.
+### Native API Calls
+|Send request and await response|Send request only|Documentation|
+|-------------------------------|-----------------|-------------|
+|async_clear|async_send_clear|[Docs](https://docs.hyperion-project.org/en/json/Control.html#clear)|
+|async_image_stream_start|async_send_image_stream_start|[Docs](https://docs.hyperion-project.org/en/json/Control.html#live-image-stream)|
+|async_image_stream_stop|async_send_image_stream_stop|[Docs](https://docs.hyperion-project.org/en/json/Control.html#live-image-stream)|
+|async_is_auth_required|async_send_is_auth_required|[Docs](https://docs.hyperion-project.org/en/json/Authorization.html#authorization-check)|
+|async_led_stream_start|async_send_led_stream_start|[Docs](https://docs.hyperion-project.org/en/json/Control.html#live-led-color-stream)|
+|async_led_stream_stop|async_send_led_stream_stop|[Docs](https://docs.hyperion-project.org/en/json/Control.html#live-led-color-stream)|
+|async_login|async_send_login|[Docs](https://docs.hyperion-project.org/en/json/Authorization.html#login-with-token)|
+|async_logout|async_send_logout|[Docs](https://docs.hyperion-project.org/en/json/Authorization.html#logout)|
+|async_request_token|async_send_request_token|[Docs](https://docs.hyperion-project.org/en/json/Authorization.html#request-a-token)|
+|async_request_token_abort|async_send_request_token_abort|[Docs](https://docs.hyperion-project.org/en/json/Authorization.html#request-a-token)|
+|async_set_adjustment|async_send_set_adjustment|[Docs](https://docs.hyperion-project.org/en/json/Control.html#adjustments)|
+|async_set_color|async_send_set_color|[Docs](https://docs.hyperion-project.org/en/json/Control.html#set-color)|
+|async_set_component|async_send_set_component|[Docs](https://docs.hyperion-project.org/en/json/Control.html#control-components)|
+|async_set_effect|async_send_set_effect|[Docs](https://docs.hyperion-project.org/en/json/Control.html#set-effect)|
+|async_set_image|async_send_set_image|[Docs](https://docs.hyperion-project.org/en/json/Control.html#set-image)|
+|async_set_led_mapping_type|async_send_set_led_mapping_type|[Docs](https://docs.hyperion-project.org/en/json/Control.html#led-mapping)|
+|async_set_sourceselect|async_send_set_sourceselect|[Docs](https://docs.hyperion-project.org/en/json/Control.html#source-selection)|
+|async_set_videomode|async_send_set_videomode|[Docs](https://docs.hyperion-project.org/en/json/Control.html#video-mode)|
+|async_start_instance|async_send_start_instance|[Docs](https://docs.hyperion-project.org/en/json/Control.html#control-instances)|
+|async_stop_instance|async_send_stop_instance|[Docs](https://docs.hyperion-project.org/en/json/Control.html#control-instances)|
+|async_switch_instance|async_send_switch_instance|[Docs](https://docs.hyperion-project.org/en/json/Control.html#api-instance-handling)|
+
+Note that the `command` and `subcommand` keys shown in the above linked
+documentation will automatically be included in the calls the client sends, and
+do not need to be specified.
 
 ## Client inputs / outputs
 
