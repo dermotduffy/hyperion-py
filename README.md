@@ -79,10 +79,48 @@ if __name__ == "__main__":
 
 ## Running in the background
 
-The `HyperionClient` subscribes to updates from the Hyperion server, which are
-used to keep the client state fresh. Optionally, callbacks can be triggered to
-the user. To receive these callbacks, the client needs to run as an `asyncio`
-background task.
+A background `asyncio task` runs to process all post-connection inbound data
+(e.g. request responses, or subscription updates from state changes on the
+server side). This background task must either be started post-connection, or
+start (and it will itself establish connection).
+
+Optionally, this background task can call callbacks back to the user.
+
+### Waiting for responses
+
+If the user makes a call that does not have `_send_` in the name (see table
+above), the function call will wait for the response and return it to the
+caller. This matching of request & response is done via the `tan` parameter. If
+not specified, the client will automatically attach a `tan` integer, and this
+will be visible in the returned output data. This matching is necessary to
+differentiate between responses due to requests, and "spontaneous data" from
+subscription updates.
+
+#### Example: Waiting for a response
+
+```python
+#!/usr/bin/python
+
+from hyperion import client
+
+async def go():
+    hc = client.HyperionClient('hyperion')
+    await hc.async_connect()
+
+    hc.start_background_task()
+
+    result = await hc.async_is_auth_required()
+    print("Result: %s" % result)
+
+import asyncio
+asyncio.get_event_loop().run_until_complete(go())
+```
+
+Output:
+
+```
+Result: {'command': 'authorize-tokenRequired', 'info': {'required': False}, 'success': True, 'tan': 1}
+```
 
 ### Callbacks
 
@@ -108,7 +146,7 @@ form:
 
 This can be used to take special action as the client connects or disconnects from the server.
 
-### Example use of asyncio event loop to deliver callbacks
+#### Example: Callbacks
 
 ```python
 from hyperion import client, const
@@ -148,23 +186,26 @@ from hyperion import client, const
 
 HOST = "hyperion"
 
-def callback(json):
-    print("Received Hyperion command: %s" % json)
-
 if __name__ == "__main__":
-    hyperion_client = client.ThreadedHyperionClient(HOST, default_callback=callback)
+    hyperion_client = client.ThreadedHyperionClient(HOST)
 
+    # Start the asyncio loop in a new thread.
+    hyperion_client.start()
+
+    # Connect the client.
     hyperion_client.connect()
+
     print("Brightness: %i%%" % hyperion_client.adjustment[0][const.KEY_BRIGHTNESS])
 
-    # Run in a separate thread.
-    hyperion_client.start()
+    # Stop the loop (will stop the thread).
+    hyperion_client.stop()
+
+    # Join the created thread.
     hyperion_client.join()
 ```
 
 Output:
 
 ```
-Received Hyperion command: {'command': 'connection-update', 'connected': True}
 Brightness: 59%
 ```
