@@ -453,9 +453,14 @@ class HyperionClient:
                 if tan in self._tan_responses:
                     self._tan_responses[tan] = resp_json
                     self._tan_cv.notify_all()
-                elif tan == 0:
-                    # TODO: Heuristic to match errors against oldest request.
-                    pass
+                # Note: The behavior is not perfect here, in cases of an older
+                # Hyperion server and a malformed response. In that case, the server
+                # will return tan==0 (regardless of the input tan), and so the
+                # match here will fail. This will call the callee to time out
+                # awaiting a response (or wait forever if not timeout is
+                # specified). This was addressed in:
+                #
+                # https://github.com/hyperion-project/hyperion.ng/issues/1001 .
         self._call_callbacks(command, resp_json)
 
     # ==================
