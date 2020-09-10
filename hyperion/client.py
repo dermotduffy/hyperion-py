@@ -1132,17 +1132,13 @@ class ThreadedHyperionClient(HyperionClient, threading.Thread):
 
     def _async_wrapper(self, coro, *args: Any, **kwargs: Any) -> Any:
         """Convert a async call to synchronous by running it in the local event loop."""
-        task = coro(*args, **kwargs)
-        done, _ = self._loop.run_until_complete(asyncio.wait([task]))
-        if done:
-            return done.pop().result()
+        future = asyncio.run_coroutine_threadsafe(coro(*args, **kwargs), self._loop)
+        return future.result()
+
+    def stop(self):
+        """Stop the asyncio loop and thus the thread."""
+        self._loop.call_soon_threadsafe(self._loop.stop)
 
     def run(self) -> None:
-        """Run connection management in this thread."""
-
-        async def manage(self):
-            while self._manage_connection:
-                await self._async_manage_connection_once()
-
-        self._manage_connection_task = self._loop.create_task(manage(self))
-        self._loop.run_until_complete(asyncio.wait([self._manage_connection_task]))
+        """Run the asyncio loop until stop is called."""
+        self._loop.run_forever()

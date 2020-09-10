@@ -1007,15 +1007,21 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
                 TEST_HOST,
                 TEST_PORT,
             )
+
+            # Start the loop in the other thread.
+            hc.start()
+
+            # Connect.
             self.assertTrue(hc.connect())
 
         serverinfo_request_json = self._to_json_line(SERVERINFO_REQUEST)
         self._verify_expected_writes(writer, writes=[serverinfo_request_json])
-
         self.assertTrue(hc.is_connected)
-        self._add_expected_reads(reader, reads=[self._to_json_line(auth_logout_out)])
 
-        hc.start()
+        self._add_expected_reads(reader, reads=[self._to_json_line(auth_logout_out)])
+        hc.start_background_task()
+
+        hc.stop()
         hc.join()
 
         self.assertFalse(hc.is_connected)
