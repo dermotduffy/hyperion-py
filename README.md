@@ -242,7 +242,7 @@ called (it will automatically connect), or `async_connect()`/`connect()` should
 be called first, followed by `start_background_task()` once the connect call
 has returned.
 
-#### HyperionClientTanNotAvailable
+### HyperionClientTanNotAvailable
 
 Exception raised if a `tan` parameter is provided to an API call, but that
 `tan` parameter is already being used by another in-progress call. Users
