@@ -17,8 +17,16 @@ from hyperion import const
 _LOGGER = logging.getLogger(__name__)
 
 
-class HyperionClientConnectAfterStartError(Exception):
+class HyperionError(Exception):
+    """Baseclass for all Hyperion exceptions."""
+
+
+class HyperionClientConnectAfterStartError(HyperionError):
     """An exception indicating async_connect() called inappropriately."""
+
+
+class HyperionClientTanNotAvailable(HyperionError):
+    """An exception indicating the requested tan is not available."""
 
 
 class HyperionClient:
@@ -485,11 +493,21 @@ class HyperionClient:
         output.update(hard or {})
         return output
 
-    async def _reserve_tan_slot(self) -> int:
+    async def _reserve_tan_slot(self, tan: Optional[int] = None) -> int:
         """Increment and return the next tan to use."""
         async with self._tan_cv:
-            tan = self._tan_counter
-            self._tan_counter += 1
+            if tan is None:
+                # If tan is not specified, find the next available higher
+                # value.
+                while self._tan_counter in self._tan_responses:
+                    self._tan_counter += 1
+                tan = self._tan_counter
+                self._tan_counter += 1
+            if tan in self._tan_responses:
+                raise HyperionClientTanNotAvailable(
+                    "Requested tan '%i' is not available in Hyperion client (%s)"
+                    % (tan, self.id)
+                )
             self._tan_responses[tan] = None
             return tan
 
@@ -526,7 +544,7 @@ class HyperionClient:
 
         async def __call__(self, client, *args, **kwargs):
             """Call the wrapper."""
-            tan = await client._reserve_tan_slot()
+            tan = await client._reserve_tan_slot(kwargs.get(const.KEY_TAN))
             data = client._set_data(kwargs, hard={const.KEY_TAN: tan})
 
             response = None

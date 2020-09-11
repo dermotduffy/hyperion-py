@@ -18,6 +18,17 @@ All API calls can be found in
 [client.py](https://github.com/dermotduffy/hyperion-py/blob/master/hyperion/client.py).
 All async calls start with `async_`.
 
+## Data model philosophy
+
+Whilst not universally true, this library attempts to precisely represent the
+data model, API and parameters as defined in the [Hyperion JSON
+documentation](https://docs.hyperion-project.org/en/json/). Thus no attempt is
+made (intentionally) to present convenient accessors/calls at a finer level of
+granularity than the model already supports. This is to ensure the client has a
+decent chance at staying functional regardless of underlying data model changes
+from the server, and the responsibility to match the changes to the server's
+data model (e.g. new Hyperion server features) belong to the caller.
+
 ### Connection & Disconnection
 
    * async_connect()
@@ -209,3 +220,34 @@ Output:
 ```
 Brightness: 59%
 ```
+
+## Exceptions
+
+### Philosophy
+
+HyperionClient strives not to throw an exception regardless of network
+circumstances, reconnection will automatically happen in the background.
+Exceptions are only raised (intentionally) for instances of likely programmer
+error.
+
+### HyperionError
+
+Not directly raised, but other exceptions inherit from this.
+
+### HyperionClientConnectAfterStartError
+
+Exception raised if `connect()` or `async_connect()` is called after
+`start_background_task()`. Either *only* `start_background_task()` should be
+called (it will automatically connect), or `async_connect()`/`connect()` should
+be called first, followed by `start_background_task()` once the connect call
+has returned.
+
+#### HyperionClientTanNotAvailable
+
+Exception raised if a `tan` parameter is provided to an API call, but that
+`tan` parameter is already being used by another in-progress call. Users
+should either not specify `tan` at all (and the client library will
+automatically manage it in an incremental fashion), or if specified manually,
+it is the caller's responsibility to ensure no two simultaneous calls share a
+`tan` (as otherwise the client would not be able to match the call to the
+response, and this exception will be raised automatically prior to the call).

@@ -1049,11 +1049,11 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         # propagating to the test.
 
         writer.write.side_effect = ConnectionError("Write exception")
-        self.assertFalse(await hc.async_image_stream_start())
+        self.assertFalse(await hc.async_send_image_stream_start())
         writer.write.side_effect = None
 
         writer.drain.side_effect = ConnectionError("Drain exception")
-        self.assertFalse(await hc.async_image_stream_start())
+        self.assertFalse(await hc.async_send_image_stream_start())
         writer.drain.side_effect = None
 
         writer.close.side_effect = ConnectionError("Close exception")
@@ -1123,12 +1123,11 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         """Test a send and receive wrapper."""
         (reader, writer, hc) = await self._create_and_test_basic_connected_client()
         clear_in = {"command": "clear", "priority": 50, "tan": 1}
-
         clear_out = {"command": "clear", "success": True, "tan": 1}
 
         # Test a successful request & response.
         self._add_expected_reads(reader, reads=[self._to_json_line(clear_out)])
-        fut_request = hc.async_clear(**clear_in)
+        fut_request = hc.async_clear(priority=50)
         fut_manage = hc._async_manage_connection_once()
         result_a, result_b = await asyncio.gather(fut_request, fut_manage)
         self.assertEqual(result_a, clear_out)
@@ -1137,9 +1136,9 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
 
         # Test a successful request & failed response.
         clear_out["success"] = False
-        clear_in["tan"] = clear_out["tan"] = 2
+        clear_out["tan"] = clear_in["tan"] = 2
         self._add_expected_reads(reader, reads=[self._to_json_line(clear_out)])
-        fut_request = hc.async_clear(**clear_in)
+        fut_request = hc.async_clear(priority=50)
         fut_manage = hc._async_manage_connection_once()
         result_a, result_b = await asyncio.gather(fut_request, fut_manage)
         self.assertEqual(result_a, clear_out)
@@ -1161,7 +1160,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         with asynctest.mock.patch(
             "asyncio.Condition.wait_for", side_effect=asyncio.TimeoutError
         ):
-            fut_request = hc.async_clear(**clear_in)
+            fut_request = hc.async_clear(priority=50)
             fut_manage = hc._async_manage_connection_once()
             result_a, result_b = await asyncio.gather(fut_request, fut_manage)
         self.assertEqual(result_a, None)
@@ -1172,6 +1171,61 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         writer.write.side_effect = ConnectionError()
         result = await hc.async_clear(**clear_in)
         self.assertEqual(result, None)
+
+    async def test_using_custom_tan(self):
+        """Test a send and receive wrapper."""
+
+        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        clear_in = {"command": "clear", "priority": 50, "tan": 100}
+        clear_out = {"command": "clear", "success": True, "tan": 100}
+
+        # Test a successful call with a custom tan.
+        self._add_expected_reads(reader, reads=[self._to_json_line(clear_out)])
+        fut_request = hc.async_clear(priority=50, tan=100)
+        fut_manage = hc._async_manage_connection_once()
+        result_a, result_b = await asyncio.gather(fut_request, fut_manage)
+        self.assertEqual(result_a, clear_out)
+        self.assertEqual(result_b, None)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(clear_in)])
+
+        # Test a call with a duplicate tan (will raise an exception).
+        self._add_expected_reads(reader, reads=[self._to_json_line(clear_out)])
+
+        with self.assertRaises(client.HyperionClientTanNotAvailable):
+            result_a, result_b, result_c = await asyncio.gather(
+                hc.async_clear(priority=50, tan=100),
+                hc.async_clear(priority=50, tan=100),
+                hc._async_manage_connection_once(),
+            )
+
+        self.assertEqual(result_a, clear_out)
+        self.assertEqual(result_b, None)
+        self._verify_expected_writes(writer, writes=[self._to_json_line(clear_in)])
+
+        # Test a custom tan and an automated tan, should succeed with the automated
+        # tan choosing the next number.
+        clear_in_1 = {"command": "clear", "priority": 50, "tan": 1}
+        clear_in_2 = {"command": "clear", "priority": 50, "tan": 2}
+        clear_out_1 = {"command": "clear", "success": True, "tan": 1}
+        clear_out_2 = {"command": "clear", "success": True, "tan": 2}
+        self._add_expected_reads(reader, reads=[self._to_json_line(clear_out_1)])
+        self._add_expected_reads(reader, reads=[self._to_json_line(clear_out_2)])
+
+        async def two_manage_connections():
+            for i in range(0, 2):
+                await hc._async_manage_connection_once()
+
+        result_a, result_b, result_c = await asyncio.gather(
+            hc.async_clear(priority=50, tan=1),
+            hc.async_clear(priority=50),
+            two_manage_connections(),
+        )
+        self.assertEqual(result_a, clear_out_1)
+        self.assertEqual(result_b, clear_out_2)
+        self._verify_expected_writes(
+            writer,
+            writes=[self._to_json_line(clear_in_1), self._to_json_line(clear_in_2)],
+        )
 
     async def test_async_connect_after_background_task_start(self):
         """Ensure calling connect() after start_background_task() raises exception."""
