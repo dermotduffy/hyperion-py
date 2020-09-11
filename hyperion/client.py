@@ -1165,3 +1165,24 @@ class ThreadedHyperionClient(HyperionClient, threading.Thread):
     def run(self) -> None:
         """Run the asyncio loop until stop is called."""
         self._loop.run_forever()
+
+
+class Response:
+    """Small wrapper class around a server response."""
+
+    def __init__(self, response):
+        """Initialize a Response object."""
+        self._response = response
+
+
+class ResponseOK(Response):
+    """Small wrapper class to determine if a response indicates success."""
+
+    @property
+    def is_success(self) -> bool:
+        """Determine if the response indicates success."""
+        return self._response and self._response.get(const.KEY_SUCCESS) is True
+
+    def __bool__(self):
+        """Determine if the response indicates success."""
+        return self.is_success

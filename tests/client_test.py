@@ -1254,3 +1254,16 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
                 #     .__self__ -> AwaitResponseWrapper
                 #         ._coro -> The wrapped coroutine within AwaitResponseWrapper.
                 self.assertEqual(wrapper.func.__self__._coro, value)
+
+
+class ResponseTestCase(unittest.TestCase):
+    """Test case for the Hyperion Client Response object."""
+
+    def test_response(self):
+        """Test a variety of responses."""
+        with self.assertRaises(TypeError):
+            client.ResponseOK()
+
+        self.assertFalse(client.ResponseOK({"data": 1}))
+        self.assertFalse(client.ResponseOK({const.KEY_SUCCESS: False}))
+        self.assertTrue(client.ResponseOK({const.KEY_SUCCESS: True}))
