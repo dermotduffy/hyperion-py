@@ -1027,6 +1027,37 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self.assertFalse(hc.is_connected)
         self._verify_reader(reader)
 
+    async def test_background_task_stop(self):
+        """Verify stopping the background task."""
+        reader = asynctest.mock.Mock(asyncio.StreamReader)
+        writer = self._create_mock_writer()
+
+        cv = asyncio.Condition()
+
+        async def block_forever():
+            async with cv:
+                # Notify the caller that we're blocked.
+                cv.notify_all()
+            while True:
+                await asyncio.sleep(10)
+
+        reader.readline.side_effect = block_forever
+
+        with asynctest.mock.patch(
+            "asyncio.open_connection", return_value=(reader, writer)
+        ):
+            hc = client.HyperionClient(TEST_HOST, TEST_PORT, loop=self.loop)
+
+            async with cv:
+                # Start the background task, which will attempt to read and get stuck.
+                hc.start_background_task()
+
+                # Wait for notification of being blocked.
+                # await cv.wait()
+                await asyncio.wait_for(cv.wait(), timeout=3)
+
+                hc.stop_background_task()
+
     def test_threaded_client_has_correct_methods(self):
         """Verify the threaded client exports all the correct methods."""
         contents = dir(
