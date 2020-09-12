@@ -338,6 +338,7 @@ class HyperionClient:
                     self._manage_connection = False
                     self._manage_connection_task = None
                     return
+            self._manage_connection_task = None
 
         def inner_create_task(self):
             self._manage_connection_task = asyncio.create_task(manage(self))
@@ -349,7 +350,6 @@ class HyperionClient:
 
         def inner_cancel():
             if self._manage_connection_task:
-                _LOGGER.error("canceling...")
                 self._manage_connection_task.cancel()
 
         self._loop.call_soon_threadsafe(inner_cancel)
@@ -1179,15 +1179,11 @@ class ThreadedHyperionClient(HyperionClient, threading.Thread):
     def stop(self):
         """Stop the asyncio loop and thus the thread."""
 
-        async def inner_cancel(self):
-            if self._manage_connection_task:
-                self._manage_connection_task.cancel()
-
         async def inner_stop(self):
             self._loop.stop()
 
         def cancel_and_stop():
-            asyncio.create_task(inner_cancel(self))
+            self.stop_background_task()
             asyncio.create_task(inner_stop(self))
 
         self._loop.call_soon_threadsafe(cancel_and_stop)
