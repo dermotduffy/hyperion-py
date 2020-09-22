@@ -3,6 +3,7 @@
 
 import asyncio
 import collections
+import copy
 import functools
 import inspect
 import json
@@ -29,6 +30,40 @@ class HyperionClientTanNotAvailable(HyperionError):
     """An exception indicating the requested tan is not available."""
 
 
+class HyperionClientState:
+    """Class representing the Hyperion client state."""
+
+    def __init__(self, state={}):
+        """Initialize state object."""
+        self._state = state
+        self._dirty = False
+
+    @property
+    def dirty(self) -> bool:
+        """Return whether or state has been modified."""
+        return self._dirty
+
+    def get(self, key: str) -> Any:
+        """Retrieve a state element."""
+        return self._state.get(key)
+
+    def set(self, key: str, new_value: Any) -> None:
+        """Set a new state value."""
+        old_value = self.get(key)
+        if old_value != new_value:
+            self._state[key] = new_value
+            self._dirty = True
+
+    def update(self, new_values: Dict[str, Any]) -> None:
+        """Update the state with a dict of values."""
+        for key in new_values:
+            self.set(key, new_values[key])
+
+    def get_all(self) -> Dict[str, Any]:
+        """Get a copy of all the state values."""
+        return copy.copy(self._state)
+
+
 class HyperionClient:
     """Hyperion Client."""
 
@@ -37,12 +72,12 @@ class HyperionClient:
         host: str,
         port: int = const.DEFAULT_PORT,
         default_callback: Optional[Callable] = None,
-        callbacks: Optional[dict] = None,
+        callbacks: Optional[Dict] = None,
         token: Optional[str] = None,
-        instance: int = 0,
+        instance: int = const.DEFAULT_INSTANCE,
         origin: str = const.DEFAULT_ORIGIN,
         timeout_secs: int = const.DEFAULT_TIMEOUT_SECS,
-        retry_secs=const.DEFAULT_CONNECTION_RETRY_DELAY,
+        retry_secs=const.DEFAULT_CONNECTION_RETRY_DELAY_SECS,
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
         """Initialize client."""
@@ -54,17 +89,18 @@ class HyperionClient:
         self._host = host
         self._port = port
         self._token = token
-        self._instance = instance
+        self._target_instance = instance
         self._origin = origin
         self._timeout_secs = timeout_secs
         self._retry_secs = retry_secs
-        self._is_connected = False
         self._loop = loop or asyncio.get_event_loop()
 
-        self._serverinfo: Optional[dict] = None
+        self._serverinfo: Optional[Dict] = None
 
-        self._manage_connection = True
-        self._manage_connection_task: Optional[asyncio.Task] = None
+        self._receive_task: Optional[asyncio.Task] = None
+        self._maintenance_task: Optional[asyncio.Task] = None
+        self._maintenance_event: asyncio.Event = asyncio.Event()
+
         self._reader: Optional[asyncio.StreamReader] = None
         self._writer: Optional[asyncio.StreamWriter] = None
 
@@ -73,7 +109,26 @@ class HyperionClient:
         self._tan_counter = 1
         self._tan_responses: Dict[int, Optional[Dict]] = collections.OrderedDict()
 
-    def set_callbacks(self, callbacks: dict) -> None:
+        self._client_state: HyperionClientState = HyperionClientState(
+            state={
+                const.KEY_CONNECTED: False,
+                const.KEY_LOGGED_IN: False,
+                const.KEY_INSTANCE: None,
+                const.KEY_LOADED_STATE: False,
+            }
+        )
+
+    async def _client_state_reset(self) -> None:
+        self._client_state.update(
+            {
+                const.KEY_CONNECTED: False,
+                const.KEY_LOGGED_IN: False,
+                const.KEY_INSTANCE: None,
+                const.KEY_LOADED_STATE: False,
+            }
+        )
+
+    def set_callbacks(self, callbacks: Dict) -> None:
         """Set the update callbacks."""
         self._callbacks = callbacks
 
@@ -88,191 +143,176 @@ class HyperionClient:
     @property
     def is_connected(self) -> bool:
         """Return server availability."""
-        return self._is_connected
+        return bool(self._client_state.get(const.KEY_CONNECTED))
 
     @property
-    def instance(self) -> int:
+    def is_logged_in(self) -> bool:
+        """Return whether the client is logged in."""
+        return self._client_state.get(const.KEY_LOGGED_IN)
+
+    @property
+    def instance(self) -> Optional[int]:
         """Return server instance."""
-        return self._instance
+        return self._client_state.get(const.KEY_INSTANCE)
 
     @property
-    def manage_connection(self) -> bool:
-        """Whether the client is actively managing the connection."""
-        return self._manage_connection
+    def target_instance(self) -> int:
+        """Return server target instance."""
+        return self._target_instance
 
-    async def async_connect(self) -> bool:
-        """Connect to the Hyperion server after a safety check."""
-        if self._manage_connection_task is not None:
-            raise HyperionClientConnectAfterStartError(
-                "Cannot call async_connect() after starting background task "
-                "in Hyperion client (%s)",
-                self.id,
-            )
-        return await self._async_connect()
+    @property
+    def has_loaded_state(self) -> bool:
+        """Return whether the client has loaded state."""
+        return self._client_state.get(const.KEY_LOADED_STATE)
 
-    async def _async_connect(self) -> bool:
+    @property
+    def client_state(self) -> Dict[str, Any]:
+        """Return client state."""
+        return self._client_state.get_all()
+
+    async def async_client_connect(self) -> bool:
         """Connect to the Hyperion server."""
+
         future_streams = asyncio.open_connection(self._host, self._port)
         try:
             self._reader, self._writer = await asyncio.wait_for(
                 future_streams, timeout=self._timeout_secs
             )
         except (asyncio.TimeoutError, ConnectionError, OSError) as exc:
-            _LOGGER.debug(
-                "Could not connect to (%s:%i): %s", self._host, self._port, str(exc)
-            )
+            _LOGGER.debug("Could not connect to (%s): %s", self.id, repr(exc))
             return False
 
-        _LOGGER.info(
-            "Connected to Hyperion server: (%s:%i)",
-            self._host,
-            self._port,
+        _LOGGER.info("Connected to Hyperion server: %s", self.id)
+
+        # Start the receive task to process inbound data from the server.
+        await self._await_or_stop_task(self._receive_task, stop_task=True)
+        self._receive_task = asyncio.create_task(self._receive_task_loop())
+
+        await self._client_state_reset()
+        self._client_state.set(const.KEY_CONNECTED, True)
+        self._call_client_state_callback_if_necessary()
+
+        if (
+            not self._client_state.get(const.KEY_LOGGED_IN)
+            and not await self._async_client_login()
+        ):
+            return False
+
+        if (
+            not self._client_state.get(const.KEY_INSTANCE)
+            and not await self._async_client_select_instance()
+        ):
+            return False
+
+        if not self._client_state.get(
+            const.KEY_LOADED_STATE
+        ) and not ServerInfoResponseOK(await self.async_get_serverinfo()):
+            return False
+
+        # Start the maintenance task if it does not already exist.
+        if not self._maintenance_task:
+            self._maintenance_task = asyncio.create_task(self._maintenance_task_loop())
+
+        return True
+
+    def _call_client_state_callback_if_necessary(self):
+        """Call the client state callbacks if state has changed."""
+        if not self._client_state.dirty:
+            return
+        data = self._set_data(
+            self._client_state.get_all(),
+            hard={
+                const.KEY_COMMAND: f"{const.KEY_CLIENT}-{const.KEY_UPDATE}",
+            },
+        )
+        self._call_callbacks(str(data[const.KEY_COMMAND]), data)
+
+    async def _async_client_login(self) -> bool:
+        """Log the client in if a token is provided."""
+        if self._token is None:
+            self._client_state.set(const.KEY_LOGGED_IN, True)
+            self._call_client_state_callback_if_necessary()
+            return True
+        return bool(LoginResponseOK(await self.async_login(token=self._token)))
+
+    async def _async_client_select_instance(self) -> bool:
+        """Select an instance the user has specified."""
+        if (
+            self._client_state.get(const.KEY_INSTANCE) is None
+            and self._target_instance == const.DEFAULT_INSTANCE
+        ):
+            self._client_state.set(const.KEY_INSTANCE, self._target_instance)
+            self._call_client_state_callback_if_necessary()
+            return True
+
+        resp_json = await self.async_switch_instance(instance=self._target_instance)
+        return (
+            bool(SwitchInstanceResponseOK(resp_json))
+            and resp_json[const.KEY_INFO][const.KEY_INSTANCE] == self._target_instance
         )
 
-        # == Request: authorize ==
-        if self._token is not None:
-            await self.async_send_login(token=self._token)
-            resp_json = await self._async_safely_read_command()
-            if (
-                not resp_json
-                or resp_json.get(const.KEY_COMMAND) != const.KEY_AUTHORIZE_LOGIN
-                or not resp_json.get(const.KEY_SUCCESS, False)
-            ):
-                _LOGGER.warning(
-                    "Authorization failed for Hyperion (%s:%i). "
-                    "Check token is valid: %s",
-                    self._host,
-                    self._port,
-                    resp_json,
-                )
-                return False
+    async def async_client_disconnect(self) -> bool:
+        """Close streams to the Hyperion server (no reconnect)."""
+        result = await self._async_client_disconnect_internal(stop_receive_task=False)
 
-        # == Request: instance ==
-        if self._instance != const.DEFAULT_INSTANCE:
-            await self.async_send_switch_instance(instance=self._instance)
-            resp_json = await self._async_safely_read_command()
-            if (
-                not resp_json
-                or resp_json.get(const.KEY_COMMAND)
-                != (f"{const.KEY_INSTANCE}-{const.KEY_SWITCH_TO}")
-                or not resp_json.get(const.KEY_SUCCESS, False)
-            ):
-                _LOGGER.warning(
-                    "Changing instqnce failed for Hyperion (%s:%i): %s ",
-                    self._host,
-                    self._port,
-                    resp_json,
-                )
-                return False
+        # Cancel the maintenance task to ensure the connection is not re-established.
+        await self._await_or_stop_task(self._maintenance_task, stop_task=True)
+        self._maintenance_task = None
 
-        if not await self._refresh_serverinfo():
-            return False
+        receive_task = self._receive_task
+        self._receive_task = None
+        await self._await_or_stop_task(receive_task, stop_task=True)
 
-        self._manage_connection = True
-        self._is_connected = True
-
-        # Call callback for connection.
-        data = {
-            const.KEY_COMMAND: f"{const.KEY_CONNECTION}-{const.KEY_UPDATE}",
-            const.KEY_CONNECTED: True,
-        }
-        self._call_callbacks(str(data[const.KEY_COMMAND]), data)
-        return True
-
-    async def _refresh_serverinfo(self) -> bool:
-        # == Request: serverinfo ==
-        # Request full state ('serverinfo') and subscribe to relevant
-        # future updates to keep this object state accurate without the need to
-        # poll.
-        data = {
-            const.KEY_COMMAND: const.KEY_SERVERINFO,
-            const.KEY_SUBSCRIBE: [
-                f"{const.KEY_ADJUSTMENT}-{const.KEY_UPDATE}",
-                f"{const.KEY_COMPONENTS}-{const.KEY_UPDATE}",
-                f"{const.KEY_EFFECTS}-{const.KEY_UPDATE}",
-                f"{const.KEY_LEDS}-{const.KEY_UPDATE}",
-                f"{const.KEY_LED_MAPPING}-{const.KEY_UPDATE}",
-                f"{const.KEY_INSTANCE}-{const.KEY_UPDATE}",
-                f"{const.KEY_PRIORITIES}-{const.KEY_UPDATE}",
-                f"{const.KEY_SESSIONS}-{const.KEY_UPDATE}",
-                f"{const.KEY_VIDEOMODE}-{const.KEY_UPDATE}",
-            ],
-        }
-
-        await self._async_send_json(data)
-        resp_json = await self._async_safely_read_command()
-        if (
-            not resp_json
-            or resp_json.get(const.KEY_COMMAND) != const.KEY_SERVERINFO
-            or not resp_json.get(const.KEY_INFO)
-            or not resp_json.get(const.KEY_SUCCESS, False)
-        ):
-            _LOGGER.warning(
-                "Could not load serverinfo state for Hyperion (%s:%i): %s",
-                self._host,
-                self._port,
-                resp_json,
-            )
-            return False
-
-        self._update_serverinfo(resp_json[const.KEY_INFO])
-        return True
-
-    async def _async_disconnect_internal(self) -> bool:
-        """Close streams to the Hyperion server. Will be re-established."""
-        self._is_connected = False
-        clean_disconnect = True
-
-        if not self._writer:
-            return clean_disconnect
-
-        try:
-            self._writer.close()
-            await self._writer.wait_closed()
-        except ConnectionError as exc:
-            _LOGGER.warning(
-                "Could not close connection cleanly for Hyperion (%s:%i): %s",
-                self._host,
-                self._port,
-                str(exc),
-            )
-            clean_disconnect = False
-
-        # Call callback for disconnection.
-        data = {
-            const.KEY_COMMAND: f"{const.KEY_CONNECTION}-{const.KEY_UPDATE}",
-            const.KEY_CONNECTED: False,
-        }
-        self._call_callbacks(str(data[const.KEY_COMMAND]), data)
-        return clean_disconnect
-
-    async def async_disconnect(self, *args: Any, **kwargs: Any) -> bool:
-        """Close streams to the Hyperion server. Do not re-establish."""
-        result = await self._async_disconnect_internal()
-        self._manage_connection = False
+        # If this method is called from the receive task, execution will not reach here!
         return result
 
-    async def _async_send_json(self, request: dict) -> bool:
+    async def _async_client_disconnect_internal(self, stop_receive_task=True) -> bool:
+        """Close streams to the Hyperion server (may reconnect)."""
+        error = False
+        if self._writer:
+            try:
+                self._writer.close()
+                await self._writer.wait_closed()
+            except ConnectionError as exc:
+                _LOGGER.warning(
+                    "Could not close connection cleanly for Hyperion (%s): %s",
+                    self.id,
+                    repr(exc),
+                )
+                error = True
+        self._writer = self._reader = None
+
+        await self._client_state_reset()
+        self._call_client_state_callback_if_necessary()
+
+        # Tell the maintenance loop it may need to reconnect.
+        self._maintenance_event.set()
+
+        if stop_receive_task:
+            await self._await_or_stop_task(self._receive_task, stop_task=True)
+            self._receive_task = None
+        return not error
+
+    async def _async_send_json(self, request: Dict) -> bool:
         """Send JSON to the server."""
         if not self._writer:
             return False
 
-        _LOGGER.debug("Send to server (%s:%i): %s", self._host, self._port, request)
+        _LOGGER.debug("Send to server (%s): %s", self.id, request)
         output = json.dumps(request, sort_keys=True).encode("UTF-8") + b"\n"
         try:
             self._writer.write(output)
             await self._writer.drain()
         except ConnectionError as exc:
             _LOGGER.warning(
-                "Could not write data for Hyperion (%s:%i): %s",
-                self._host,
-                self._port,
-                str(exc),
+                "Could not write data for Hyperion (%s): %s",
+                self.id,
+                repr(exc),
             )
             return False
         return True
 
-    async def _async_safely_read_command(self, timeout: bool = True) -> Optional[dict]:
+    async def _async_safely_read_command(self, timeout: bool = True) -> Optional[Dict]:
         """Safely read a command from the stream."""
         if not self._reader:
             return None
@@ -283,114 +323,138 @@ class HyperionClient:
             future_resp = self._reader.readline()
             resp = await asyncio.wait_for(future_resp, timeout=timeout_secs)
         except ConnectionError:
-            _LOGGER.warning(
-                "Connection to Hyperion lost (%s:%i) ...", self._host, self._port
-            )
-            await self._async_disconnect_internal()
+            _LOGGER.warning("Connection to Hyperion lost (%s) ...", self.id)
+            await self._async_client_disconnect_internal()
             return None
         except asyncio.TimeoutError:
             _LOGGER.warning(
-                "Read from Hyperion timed out (%s:%i), disconnecting ...",
-                self._host,
-                self._port,
+                "Read from Hyperion timed out (%s), disconnecting ...", self.id
             )
-            await self._async_disconnect_internal()
+            await self._async_client_disconnect_internal()
             return None
 
         if not resp:
-            _LOGGER.warning(
-                "Connection to Hyperion lost (%s:%i) ...", self._host, self._port
-            )
-            await self._async_disconnect_internal()
+            _LOGGER.warning("Connection to Hyperion lost (%s) ...", self.id)
+            await self._async_client_disconnect_internal()
             return None
 
-        _LOGGER.debug("Read from server (%s:%i): %s", self._host, self._port, resp)
+        _LOGGER.debug("Read from server (%s): %s", self.id, resp)
 
         try:
             resp_json = json.loads(resp)
         except json.decoder.JSONDecodeError:
             _LOGGER.warning(
-                "Could not decode JSON from Hyperion (%s:%i), skipping...",
-                self._host,
-                self._port,
+                "Could not decode JSON from Hyperion (%s), skipping...",
+                self.id,
             )
             return None
 
         if const.KEY_COMMAND not in resp_json:
             _LOGGER.warning(
-                "JSON from Hyperion (%s:%i) did not include expected '%s' "
+                "JSON from Hyperion (%s) did not include expected '%s' "
                 "parameter, skipping...",
-                self._host,
-                self._port,
+                self.id,
                 const.KEY_COMMAND,
             )
             return None
         return resp_json
 
-    def start_background_task(self) -> None:
-        """Run connection management in background task."""
+    async def _maintenance_task_loop(self) -> None:
+        try:
+            while True:
+                await self._maintenance_event.wait()
+                if not self._client_state.get(const.KEY_CONNECTED):
+                    if not await self.async_client_connect():
+                        _LOGGER.info(
+                            "Could not estalish valid connection to Hyperion (%s), "
+                            "retrying in %i seconds...",
+                            self.id,
+                            self._retry_secs,
+                        )
+                        await self._async_client_disconnect_internal()
+                        await asyncio.sleep(const.DEFAULT_CONNECTION_RETRY_DELAY_SECS)
+                        continue
+                elif not self._client_state.get(
+                    const.KEY_LOADED_STATE
+                ) and not ServerInfoResponseOK(await self.async_get_serverinfo()):
+                    await self._async_client_disconnect_internal()
 
-        async def manage(self):
-            while self._manage_connection:
-                try:
-                    await self._async_manage_connection_once()
-                except asyncio.CancelledError:
-                    self._manage_connection = False
-                    self._manage_connection_task = None
-                    return
-            self._manage_connection_task = None
+                if self._client_state.get(
+                    const.KEY_CONNECTED
+                ) and self._client_state.get(const.KEY_LOADED_STATE):
+                    self._maintenance_event.clear()
 
-        def inner_create_task(self):
-            self._manage_connection_task = asyncio.create_task(manage(self))
-
-        self._loop.call_soon_threadsafe(inner_create_task, self)
-
-    def stop_background_task(self) -> None:
-        """Stop the connection management task."""
-
-        def inner_cancel():
-            if self._manage_connection_task:
-                self._manage_connection_task.cancel()
-
-        self._loop.call_soon_threadsafe(inner_cancel)
-
-    async def _change_instance(self, instance: int) -> bool:
-        if not await self._refresh_serverinfo():
-            _LOGGER.warning(
-                "Could not reload state after instance change on "
-                "(%s:%i, instance %i), must disconnect..."
-                % (self._host, self._port, instance)
+        except asyncio.CancelledError:
+            # Don't log CancelledError, but do propagate it upwards.
+            raise
+        except Exception:
+            # Make sure exceptions are logged (for testing purposes, as this is
+            # in a background task).
+            _LOGGER.exception(
+                "Exception in Hyperion (%s) background maintenance task", self.id
             )
-            await self._async_disconnect_internal()
+            raise
+
+    async def _receive_task_loop(self) -> None:
+        """Run receive task continually."""
+        while await self._async_receive_once():
+            pass
+
+    async def _await_or_stop_task(self, task, stop_task=False) -> bool:
+        """Await task, optionally stopping it first.
+
+        Returns True if the task is done.
+        """
+        if task is None:
             return False
-        else:
-            self._instance = instance
-        return True
+        elif stop_task:
+            task.cancel()
 
-    async def _async_manage_connection_once(self) -> None:
-        """Manage the bidirectional connection to the server."""
-        if not self._is_connected:
-            if not await self._async_connect():
-                _LOGGER.info(
-                    "Could not estalish valid connection to Hyperion (%s:%i), "
-                    "retrying in %i seconds...",
-                    self._host,
-                    self._port,
-                    self._retry_secs,
-                )
-                await self._async_disconnect_internal()
-                await asyncio.sleep(const.DEFAULT_CONNECTION_RETRY_DELAY)
-                return
+        # Yield to the event loop, so the above cancellation can be processed.
+        await asyncio.sleep(0)
 
-        resp_json = await self._async_safely_read_command(timeout=False)
-        if not resp_json or not self._serverinfo:
+        if task.done():
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            return True
+        return False
+
+    async def _handle_changed_instance(self, instance: int) -> None:
+        """Handle when instance changes (whether this client triggered that or not)."""
+        if instance == self._client_state.get(const.KEY_INSTANCE):
             return
+        self._target_instance = instance
+        self._client_state.update(
+            {const.KEY_INSTANCE: instance, const.KEY_LOADED_STATE: False}
+        )
+        self._update_serverinfo(None)
+        self._call_client_state_callback_if_necessary()
+
+        # Wake the maintenance task to load the state (this is called from the
+        # receive loop, so it cannot be loaded from here).
+        self._maintenance_event.set()
+
+    async def _async_receive_once(self) -> bool:
+        """Manage the bidirectional connection to the server."""
+        resp_json = await self._async_safely_read_command(timeout=False)
+        if not resp_json:
+            return False
         command = resp_json[const.KEY_COMMAND]
 
         if not resp_json.get(const.KEY_SUCCESS, True):
-            _LOGGER.warning(
-                "Failed Hyperion (%s:%i) command: %s", self._host, self._port, resp_json
-            )
+            # If it's a failed authorization call, print a specific warning
+            # message.
+            if command == const.KEY_AUTHORIZE_LOGIN:
+                _LOGGER.warning(
+                    "Authorization failed for Hyperion (%s). "
+                    "Check token is valid: %s",
+                    self.id,
+                    resp_json,
+                )
+            else:
+                _LOGGER.warning("Failed Hyperion (%s) command: %s", self.id, resp_json)
         elif (
             command == f"{const.KEY_COMPONENTS}-{const.KEY_UPDATE}"
             and const.KEY_DATA in resp_json
@@ -424,17 +488,15 @@ class HyperionClient:
 
             for instance in instances:
                 if (
-                    instance.get(const.KEY_INSTANCE) == self._instance
+                    instance.get(const.KEY_INSTANCE)
+                    == self._client_state.get(const.KEY_INSTANCE)
                     and instance.get(const.KEY_RUNNING) is True
                 ):
                     self._update_instances(instances)
                     break
             else:
-                await self._change_instance(const.DEFAULT_INSTANCE)
-        elif (
-            command == f"{const.KEY_INSTANCE}-{const.KEY_SWITCH_TO}"
-            and resp_json.get(const.KEY_INFO, {}).get(const.KEY_INSTANCE) is not None
-        ):
+                await self._handle_changed_instance(const.DEFAULT_INSTANCE)
+        elif SwitchInstanceResponseOK(resp_json):
             # Upon connection being successfully switched to another instance,
             # the client will receive:
             #
@@ -442,7 +504,9 @@ class HyperionClient:
             #
             # This is our cue to fully refresh our serverinfo so our internal
             # state is representing the correct instance.
-            await self._change_instance(resp_json[const.KEY_INFO][const.KEY_INSTANCE])
+            await self._handle_changed_instance(
+                resp_json[const.KEY_INFO][const.KEY_INSTANCE]
+            )
         elif (
             command == f"{const.KEY_LED_MAPPING}-{const.KEY_UPDATE}"
             and const.KEY_LED_MAPPING_TYPE in resp_json.get(const.KEY_DATA, {})
@@ -466,9 +530,17 @@ class HyperionClient:
         ):
             self._update_leds(resp_json[const.KEY_DATA][const.KEY_LEDS])
         elif command == f"{const.KEY_AUTHORIZE_LOGOUT}":
-            await self.async_disconnect()
+            await self.async_client_disconnect()
+        elif ServerInfoResponseOK(resp_json):
+            self._update_serverinfo(resp_json[const.KEY_INFO])
+            self._client_state.set(const.KEY_LOADED_STATE, True)
+        elif LoginResponseOK(resp_json):
+            self._client_state.set(const.KEY_LOGGED_IN, True)
 
+        self._call_callbacks(command, resp_json)
+        self._call_client_state_callback_if_necessary()
         await self._handle_response_for_caller(command, resp_json)
+        return True
 
     async def _handle_response_for_caller(self, command, resp_json):
         """Handle a server response for a caller."""
@@ -480,20 +552,19 @@ class HyperionClient:
                     self._tan_responses[tan] = resp_json
                     self._tan_cv.notify_all()
                 # Note: The behavior is not perfect here, in cases of an older
-                # Hyperion server and a malformed response. In that case, the server
-                # will return tan==0 (regardless of the input tan), and so the
-                # match here will fail. This will call the callee to time out
-                # awaiting a response (or wait forever if not timeout is
-                # specified). This was addressed in:
+                # Hyperion server and a malformed request. In that case, the
+                # server will return tan==0 (regardless of the input tan), and
+                # so the match here will fail. This will cause the callee to
+                # time out awaiting a response (or wait forever if not timeout
+                # is specified). This was addressed in:
                 #
                 # https://github.com/hyperion-project/hyperion.ng/issues/1001 .
-        self._call_callbacks(command, resp_json)
 
     # ==================
     # || Helper calls ||
     # ==================
 
-    def _call_callbacks(self, command: str, json: dict) -> None:
+    def _call_callbacks(self, command: str, json: Dict) -> None:
         """Call the relevant callbacks for the given command."""
         if command in self._callbacks:
             self._callbacks[command](json)
@@ -503,9 +574,9 @@ class HyperionClient:
     @property
     def id(self) -> str:
         """Return an ID representing this Hyperion client."""
-        return "%s:%i-%i" % (self._host, self._port, self._instance)
+        return "%s:%i-%i" % (self._host, self._port, self._target_instance)
 
-    def _set_data(self, data: dict, hard: dict = None, soft: dict = None) -> dict:
+    def _set_data(self, data: Dict, hard: Dict = None, soft: Dict = None) -> Dict:
         output = soft or {}
         output.update(data)
         output.update(hard or {})
@@ -537,21 +608,26 @@ class HyperionClient:
 
     async def _wait_for_tan_response(self, tan: int) -> Optional[Dict]:
         """Wait for a response to arrive."""
-        async with self._tan_cv:
-            found = None
-            try:
-                found = await asyncio.wait_for(
-                    self._tan_cv.wait_for(
-                        lambda: self._tan_responses.get(tan) is not None
-                    ),
-                    timeout=self._timeout_secs,
-                )
-            except asyncio.TimeoutError:
-                pass
-
-            if not found:
-                return None
+        await self._tan_cv.acquire()
+        try:
+            await asyncio.wait_for(
+                self._tan_cv.wait_for(lambda: self._tan_responses.get(tan) is not None),
+                timeout=self._timeout_secs,
+            )
             return self._tan_responses[tan]
+        except asyncio.TimeoutError:  # asyncio.CancelledError
+            pass
+        except Exception:
+            raise
+        finally:
+            # This should not be necessary, this function should be able to use
+            # 'async with self._tan_cv', however this does not currently play nice
+            # with Python 3.7/3.8 when the wait_for is canceled or times out,
+            # (the condition lock is not reaquired before re-raising the exception).
+            # See: https://bugs.python.org/issue39032
+            if self._tan_cv.locked():
+                self._tan_cv.release()
+        return None
 
     class AwaitResponseWrapper:
         """Wrapper an async *send* coroutine and await the response."""
@@ -562,13 +638,22 @@ class HyperionClient:
 
         async def __call__(self, client, *args, **kwargs):
             """Call the wrapper."""
+            # The receive task should never be executing a call that uses the
+            # AwaitResponseWrapper (as the response is itself handled by the receive
+            # task, i.e. partial deadlock). This assertion defends against programmer
+            # error in development of the client iself.
+            assert asyncio.current_task() != client._receive_task
+
             tan = await client._reserve_tan_slot(kwargs.get(const.KEY_TAN))
             data = client._set_data(kwargs, hard={const.KEY_TAN: tan})
 
             response = None
             if await self._coro(client, *args, **data):
                 response = await client._wait_for_tan_response(tan)
-
+                # fut = asyncio.run_coroutine_threadsafe(
+                #    client._wait_for_tan_response(tan),
+                #    client._loop)
+                # response = fut.result()
             await client._remove_tan_slot(tan)
             return response
 
@@ -685,11 +770,11 @@ class HyperionClient:
     # ================
 
     @property
-    def adjustment(self) -> dict:
+    def adjustment(self) -> Dict:
         """Return adjustment."""
         return self._get_serverinfo_value(const.KEY_ADJUSTMENT)
 
-    def _update_adjustment(self, adjustment: dict) -> None:
+    def _update_adjustment(self, adjustment: Dict) -> None:
         """Update adjustment."""
         if (
             self._serverinfo is None
@@ -743,11 +828,11 @@ class HyperionClient:
     # ==================================================================================
 
     @property
-    def components(self) -> dict:
+    def components(self) -> Dict:
         """Return components."""
         return self._get_serverinfo_value(const.KEY_COMPONENTS)
 
-    def _update_component(self, new_component: dict) -> None:
+    def _update_component(self, new_component: Dict) -> None:
         """Update full Hyperion state."""
         if (
             self._serverinfo is None
@@ -810,11 +895,11 @@ class HyperionClient:
     # ==================================================================================
 
     @property
-    def effects(self) -> dict:
+    def effects(self) -> Dict:
         """Return effects."""
         return self._get_serverinfo_value(const.KEY_EFFECTS)
 
-    def _update_effects(self, effects: dict) -> None:
+    def _update_effects(self, effects: Dict) -> None:
         """Update effects."""
         if self._serverinfo is None or type(effects) != list:
             return
@@ -887,11 +972,11 @@ class HyperionClient:
     # =================================================================================
 
     @property
-    def instances(self) -> dict:
+    def instances(self) -> Dict:
         """Return instances."""
         return self._get_serverinfo_value(const.KEY_INSTANCE)
 
-    def _update_instances(self, instances: dict) -> None:
+    def _update_instances(self, instances: Dict) -> None:
         """Update instances."""
         if self._serverinfo is None or type(instances) != list:
             return
@@ -943,11 +1028,11 @@ class HyperionClient:
     # =============================================================================
 
     @property
-    def leds(self) -> dict:
+    def leds(self) -> Dict:
         """Return LEDs."""
         return self._get_serverinfo_value(const.KEY_LEDS)
 
-    def _update_leds(self, leds: dict) -> None:
+    def _update_leds(self, leds: Dict) -> None:
         """Update LEDs."""
         if self._serverinfo is None or type(leds) != list:
             return
@@ -1017,18 +1102,18 @@ class HyperionClient:
     # =================================================================================
 
     @property
-    def priorities(self) -> dict:
+    def priorities(self) -> Dict:
         """Return priorites."""
         return self._get_serverinfo_value(const.KEY_PRIORITIES)
 
-    def _update_priorities(self, priorities: dict) -> None:
+    def _update_priorities(self, priorities: Dict) -> None:
         """Update priorites."""
         if self._serverinfo is None or type(priorities) != list:
             return
         self._serverinfo[const.KEY_PRIORITIES] = priorities
 
     @property
-    def visible_priority(self) -> Optional[dict]:
+    def visible_priority(self) -> Optional[Dict]:
         """Return the visible priority, if any."""
         # The visible priority is supposed to be the first returned by the
         # API, but due to a bug the ordering is incorrect search for it
@@ -1071,7 +1156,7 @@ class HyperionClient:
     # ================================================================================
 
     @property
-    def sessions(self) -> Optional[dict]:
+    def sessions(self) -> Optional[Dict]:
         """Return sessions."""
         return self._get_serverinfo_value(const.KEY_SESSIONS)
 
@@ -1087,11 +1172,11 @@ class HyperionClient:
     # =====================================================================
 
     @property
-    def serverinfo(self) -> Optional[dict]:
+    def serverinfo(self) -> Optional[Dict]:
         """Return current serverinfo."""
         return self._serverinfo
 
-    def _update_serverinfo(self, state: dict) -> None:
+    def _update_serverinfo(self, state: Optional[Dict]) -> None:
         """Update full Hyperion state."""
         self._serverinfo = state
 
@@ -1100,6 +1185,32 @@ class HyperionClient:
         if not self._serverinfo:
             return None
         return self._serverinfo.get(key)
+
+    async def async_send_get_serverinfo(self, *args: Any, **kwargs: Any) -> bool:
+        """Server a serverinfo full state/subscription request."""
+        # Request full state ('serverinfo') and subscribe to relevant
+        # future updates to keep this object state accurate without the need to
+        # poll.
+        data = self._set_data(
+            kwargs,
+            hard={
+                const.KEY_COMMAND: const.KEY_SERVERINFO,
+                const.KEY_SUBSCRIBE: [
+                    f"{const.KEY_ADJUSTMENT}-{const.KEY_UPDATE}",
+                    f"{const.KEY_COMPONENTS}-{const.KEY_UPDATE}",
+                    f"{const.KEY_EFFECTS}-{const.KEY_UPDATE}",
+                    f"{const.KEY_LEDS}-{const.KEY_UPDATE}",
+                    f"{const.KEY_LED_MAPPING}-{const.KEY_UPDATE}",
+                    f"{const.KEY_INSTANCE}-{const.KEY_UPDATE}",
+                    f"{const.KEY_PRIORITIES}-{const.KEY_UPDATE}",
+                    f"{const.KEY_SESSIONS}-{const.KEY_UPDATE}",
+                    f"{const.KEY_VIDEOMODE}-{const.KEY_UPDATE}",
+                ],
+            },
+        )
+        return await self._async_send_json(data)
+
+    async_get_serverinfo = AwaitResponseWrapper(async_send_get_serverinfo)
 
     # ==================================================================================
     # ** Videomode **
@@ -1126,6 +1237,7 @@ class HyperionClient:
     async_set_videomode = AwaitResponseWrapper(async_send_set_videomode)
 
 
+# TODO: Make this actually work.
 class ThreadedHyperionClient(HyperionClient, threading.Thread):
     """Hyperion Client that runs in a dedicated thread."""
 
@@ -1134,12 +1246,12 @@ class ThreadedHyperionClient(HyperionClient, threading.Thread):
         host: str,
         port: int = const.DEFAULT_PORT,
         default_callback: Optional[Callable] = None,
-        callbacks: Optional[dict] = None,
+        callbacks: Optional[Dict] = None,
         token: Optional[str] = None,
         instance: int = 0,
         origin: str = const.DEFAULT_ORIGIN,
         timeout_secs: int = const.DEFAULT_TIMEOUT_SECS,
-        retry_secs=const.DEFAULT_CONNECTION_RETRY_DELAY,
+        retry_secs=const.DEFAULT_CONNECTION_RETRY_DELAY_SECS,
     ) -> None:
         """Initialize client."""
         loop = asyncio.new_event_loop()
@@ -1193,22 +1305,58 @@ class ThreadedHyperionClient(HyperionClient, threading.Thread):
         self._loop.run_forever()
 
 
-class Response:
+class ResponseOK:
     """Small wrapper class around a server response."""
 
-    def __init__(self, response):
+    def __init__(self, response, cmd=None, validators=[]):
         """Initialize a Response object."""
         self._response = response
+        self._cmd = cmd
+        self._validators = validators
 
-
-class ResponseOK(Response):
-    """Small wrapper class to determine if a response indicates success."""
-
-    @property
-    def is_success(self) -> bool:
+    def __bool__(self) -> bool:
         """Determine if the response indicates success."""
-        return self._response and self._response.get(const.KEY_SUCCESS) is True
+        if not self._response:
+            return False
+        if not self._response.get(const.KEY_SUCCESS, False):
+            return False
+        if self._response.get(const.KEY_COMMAND) != self._cmd:
+            return False
+        for validator in self._validators:
+            if not validator(self._response):
+                return False
+        return True
 
-    def __bool__(self):
-        """Determine if the response indicates success."""
-        return self.is_success
+
+class ServerInfoResponseOK(ResponseOK):
+    """Wrapper class for ServerInfo responses."""
+
+    def __init__(self, response):
+        """Initialize the wrapper class."""
+        super().__init__(
+            response,
+            cmd=const.KEY_SERVERINFO,
+            validators=[lambda r: r.get(const.KEY_INFO)],
+        )
+
+
+class LoginResponseOK(ResponseOK):
+    """Wrapper class for LoginResponse."""
+
+    def __init__(self, response):
+        """Initialize the wrapper class."""
+        super().__init__(response, cmd=const.KEY_AUTHORIZE_LOGIN)
+
+
+class SwitchInstanceResponseOK(ResponseOK):
+    """Wrapper class for SwitchInstanceResponse."""
+
+    def __init__(self, response):
+        """Initialize the wrapper class."""
+        super().__init__(
+            response,
+            cmd=f"{const.KEY_INSTANCE}-{const.KEY_SWITCH_TO}",
+            validators=[
+                lambda r: r.get(const.KEY_INFO, {}).get(const.KEY_INSTANCE) is not None
+            ],
+        )

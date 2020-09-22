@@ -2,6 +2,7 @@
 """Test for the Hyperion Client."""
 
 import asynctest
+from asynctest import helpers
 import asyncio
 import inspect
 import json
@@ -11,10 +12,8 @@ from hyperion import client, const
 import logging
 
 logging.basicConfig()
-logger = logging.getLogger(__name__)
-
-# Change logging level here.
-logger.setLevel(logging.DEBUG)
+_LOGGER = logging.getLogger(__name__)
+_LOGGER.setLevel(logging.DEBUG)
 
 PATH_TESTDATA = os.path.join(os.path.dirname(__file__), "testdata")
 TEST_HOST = "test"
@@ -22,7 +21,7 @@ TEST_PORT = 65000
 TEST_TOKEN = "FAKE_TOKEN"
 TEST_INSTANCE = 1
 
-JSON_FILENAME_SERVERINFO_RESPONSE = "serverinfo_response_1.json"
+FILE_SERVERINFO_RESPONSE = "serverinfo_response_1.json"
 
 SERVERINFO_REQUEST = {
     "command": "serverinfo",
@@ -37,10 +36,190 @@ SERVERINFO_REQUEST = {
         "sessions-update",
         "videomode-update",
     ],
+    "tan": 1,
 }
 
 
-class AsyncHyperionClientTestCase(asynctest.TestCase):
+class MockStreamReaderWriter:
+    """A simple mocl StreamReader and StreamWriter."""
+
+    def __init__(self, flow=[]):
+        """Initializse the mock."""
+        self._flow = flow
+        self._read_cv = asyncio.Condition()
+        self._write_cv = asyncio.Condition()
+        self._flow_cv = asyncio.Condition()
+        self._data_to_drain = None
+
+    async def add_flow(self, flow):
+        """Add expected calls to the flow."""
+        async with self._flow_cv:
+            self._flow.extend(flow)
+        await self.unblock_read()
+        await self.unblock_write()
+
+    async def unblock_read(self):
+        """Unblock the read call."""
+        async with self._read_cv:
+            self._read_cv.notify_all()
+
+    async def unblock_write(self):
+        """Unblock the write call."""
+        async with self._write_cv:
+            self._write_cv.notify_all()
+
+    async def block_read(self):
+        """Block the read call."""
+        async with self._read_cv:
+            await self._read_cv.wait()
+
+    async def block_write(self):
+        """Block the write call."""
+        async with self._write_cv:
+            await self._write_cv.wait()
+
+    async def block_until_flow_empty(self):
+        """Block until the flow has been consumed."""
+        async with self._flow_cv:
+            await self._flow_cv.wait_for(lambda: not self._flow)
+
+    async def assert_flow_finished(self):
+        """Assert that the flow has been consumed."""
+        async with self._flow_cv:
+            assert not self._flow
+
+    def _get_test_filepath(self, filename):
+        return os.path.join(PATH_TESTDATA, filename)
+
+    def _to_json_line(self, data):
+        """Convert data to an encoded JSON string."""
+        if type(data) == str:
+            return data.encode("UTF-8")
+        else:
+            return (json.dumps(data, sort_keys=True) + "\n").encode("UTF-8")
+
+    async def _pop_flow(self):
+        """Remove an item from the front of the flow and notify."""
+        async with self._flow_cv:
+            if not self._flow:
+                _LOGGER.exception("Unexpected empty flow")
+                raise AssertionError("Unexpected empty flow")
+            item = self._flow.pop(0)
+            self._flow_cv.notify_all()
+            return item
+
+    def _is_exception(self, data):
+        """Determine if a data element is an Exception object."""
+        return isinstance(data, Exception)
+
+    async def readline(self):
+        """Read a line from the mock.
+
+        Will block indefinitely if no read call is available.
+        """
+
+        _LOGGER.debug("Readline..")
+        while True:
+            should_block = False
+            async with self._flow_cv:
+                if not self._flow:
+                    should_block = True
+                else:
+                    cmd = self._flow[0][0]
+
+                    if cmd != "read":
+                        should_block = True
+
+            if should_block:
+                await self.block_read()
+                continue
+
+            cmd, data = await self._pop_flow()
+            await self.unblock_write()
+
+            if self._is_exception(data):
+                raise data
+            return self._to_json_line(data)
+
+    def close(self):
+        """Close the mock."""
+
+    async def wait_closed(self):
+        """Wait for the close to complete."""
+        _LOGGER.debug("MockStreamReaderWriter: wait_closed()")
+
+        cmd, data = await self._pop_flow()
+        assert cmd == "close", "wait_closed() called unexpectedly"
+
+        if self._is_exception(data):
+            raise data
+
+    def write(self, data_in):
+        """Write data to the mock."""
+        _LOGGER.debug("MockStreamReaderWriter: write(%s)", data_in)
+        assert self._data_to_drain is None
+        self._data_to_drain = data_in
+
+    async def drain(self):
+        """Drain the most recent write to the mock.
+
+        Will block if the next write in the flow (not necessarily the next call in
+        the flow) matches that which is expected.
+        """
+        _LOGGER.debug("MockStreamReaderWriter: drain()")
+
+        while True:
+            assert self._data_to_drain is not None
+
+            async with self._flow_cv:
+                assert len(self._flow) > 0, (
+                    "drain() called unexpectedly: %s" % self._data_to_drain
+                )
+                cmd, data = self._flow[0]
+
+            should_block = False
+            if cmd != "write":
+                async with self._flow_cv:
+                    for cmd_i, data_i in self._flow[1:]:
+                        if cmd_i == "write":
+                            assert json.loads(self._data_to_drain) == data_i
+                            should_block = True
+                            break
+                    else:
+                        raise AssertionError(
+                            'Unexpected call to drain with data "%s", expected '
+                            '"%s" with data "%s"' % (self._data_to_drain, cmd, data)
+                        )
+
+            if should_block:
+                await self.block_write()
+                continue
+
+            assert self._data_to_drain is not None
+
+            if self._is_exception(data):
+                # 'data' is an exception, raise it.
+                await self._pop_flow()
+                raise data
+            elif callable(data):
+                # 'data' is a callable, call it with the decoded data.
+                try:
+                    data_in = json.loads(self._data_to_drain)
+                except json.decoder.JSONDecodeError:
+                    data_in = self._data_to_drain
+                assert data(data_in)
+            else:
+                # 'data' is just data. Direct compare.
+                assert self._data_to_drain == self._to_json_line(data)
+
+            self._data_to_drain = None
+
+            await self._pop_flow()
+            await self.unblock_read()
+            break
+
+
+class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
     """Test case for the Hyperion Client."""
 
     def _create_mock_reader(self, reads=None, filenames=None):
@@ -50,6 +229,11 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         if filenames:
             self._add_expected_reads_from_files(reader, filenames)
         return reader
+
+    def _read_file(self, filename):
+        with open(self._get_test_filepath(filename)) as fh:
+            data = fh.read()
+        return json.loads(data)
 
     def _create_mock_writer(self):
         return asynctest.mock.Mock(asyncio.StreamWriter)
@@ -99,7 +283,8 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
 
     def setUp(self):
         """Set up testcase."""
-        pass
+        self.loop.set_debug(enabled=True)
+        client._LOGGER.setLevel(logging.DEBUG)
 
     def tearDown(self):
         """Tear down testcase."""
@@ -107,33 +292,46 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
 
     async def _create_and_test_basic_connected_client(self, **kwargs):
         """Create a basic connected client object."""
-        reader = self._create_mock_reader(filenames=[JSON_FILENAME_SERVERINFO_RESPONSE])
-        writer = self._create_mock_writer()
-        kwargs["loop"] = self.loop
+        rw = MockStreamReaderWriter(
+            [
+                ("write", {**SERVERINFO_REQUEST, **{"tan": 1}}),
+                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 1}}),
+            ]
+        )
 
-        with asynctest.mock.patch(
-            "asyncio.open_connection", return_value=(reader, writer)
-        ):
+        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
             hc = client.HyperionClient(TEST_HOST, TEST_PORT, **kwargs)
-            self.assertTrue(await hc.async_connect())
+            self.assertTrue(await hc.async_client_connect())
 
-        self._verify_reader(reader)
-        serverinfo_request_json = self._to_json_line(SERVERINFO_REQUEST)
-
-        self._verify_expected_writes(writer, writes=[serverinfo_request_json])
-        return (reader, writer, hc)
-
-    async def test_async_connect(self):
-        """Test async connection to server."""
-        (_, _, hc) = await self._create_and_test_basic_connected_client()
-        self.assertTrue(hc.is_connected)
+        await rw.assert_flow_finished()
+        return (rw, hc)
 
     def _to_json_line(self, data):
         """Convert data to an encoded JSON string."""
         return (json.dumps(data, sort_keys=True) + "\n").encode("UTF-8")
 
-    async def test_async_connect_authorized(self):
+    async def _block_until_done(self, rw, additional_wait_secs=None):
+        if additional_wait_secs:
+            await self.advance(additional_wait_secs)
+        await rw.block_until_flow_empty()
+        await helpers.exhaust_callbacks(self.loop)
+
+    async def _disconnect_and_assert_finished(self, rw, hc):
+        await rw.add_flow([("close", None)])
+        self.assertTrue(await hc.async_client_disconnect())
+        await self._block_until_done(rw)
+        self.assertFalse(hc.is_connected)
+        await rw.assert_flow_finished()
+
+    async def test_async_client_connect(self):
+        """Test async connection to server."""
+        (rw, hc) = await self._create_and_test_basic_connected_client()
+        self.assertTrue(hc.is_connected)
+        await self._disconnect_and_assert_finished(rw, hc)
+
+    async def test_async_client_connect_authorized(self):
         """Test server connection with authorization."""
+
         authorize_request = {
             "command": "authorize",
             "subcommand": "login",
@@ -141,30 +339,24 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         }
         authorize_response = {"command": "authorize-login", "success": True}
 
-        reader = self._create_mock_reader(
-            reads=[self._to_json_line(authorize_response)],
-            filenames=[JSON_FILENAME_SERVERINFO_RESPONSE],
-        )
-        writer = self._create_mock_writer()
-
-        with asynctest.mock.patch(
-            "asyncio.open_connection", return_value=(reader, writer)
-        ):
-            hc = client.HyperionClient(
-                TEST_HOST, TEST_PORT, token=TEST_TOKEN, loop=self.loop
-            )
-            self.assertTrue(await hc.async_connect())
-
-        self._verify_reader(reader)
-        self._verify_expected_writes(
-            writer,
-            writes=[
-                self._to_json_line(authorize_request),
-                self._to_json_line(SERVERINFO_REQUEST),
-            ],
+        rw = MockStreamReaderWriter(
+            [
+                ("write", {**authorize_request, **{"tan": 1}}),
+                ("read", {**authorize_response, **{"tan": 1}}),
+                ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
+                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}}),
+            ]
         )
 
-    async def test_async_connect_specified_instance(self):
+        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+            hc = client.HyperionClient(TEST_HOST, TEST_PORT, token=TEST_TOKEN)
+            self.assertTrue(await hc.async_client_connect())
+            self.assertTrue(hc.has_loaded_state)
+            self.assertTrue(hc.is_logged_in)
+
+        await self._disconnect_and_assert_finished(rw, hc)
+
+    async def test_async_client_connect_specified_instance(self):
         """Test server connection to specified instance."""
         instance_request = {
             "command": "instance",
@@ -174,98 +366,120 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         instance_response = {
             "command": "instance-switchTo",
             "success": True,
-            "tan": 0,
             "info": {"instance": TEST_INSTANCE},
         }
 
-        reader = self._create_mock_reader(
-            reads=[self._to_json_line(instance_response)],
-            filenames=[JSON_FILENAME_SERVERINFO_RESPONSE],
+        rw = MockStreamReaderWriter(
+            [
+                ("write", {**instance_request, **{"tan": 1}}),
+                ("read", {**instance_response, **{"tan": 1}}),
+                ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
+                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}}),
+            ]
         )
-        writer = self._create_mock_writer()
 
-        with asynctest.mock.patch(
-            "asyncio.open_connection", return_value=(reader, writer)
-        ):
-            hc = client.HyperionClient(
-                TEST_HOST, TEST_PORT, instance=TEST_INSTANCE, loop=self.loop
-            )
-            self.assertTrue(await hc.async_connect())
+        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+            hc = client.HyperionClient(TEST_HOST, TEST_PORT, instance=TEST_INSTANCE)
+            self.assertTrue(await hc.async_client_connect())
 
         self.assertEqual(hc.instance, TEST_INSTANCE)
-
-        self._verify_reader(reader)
-        self._verify_expected_writes(
-            writer,
-            writes=[
-                self._to_json_line(instance_request),
-                self._to_json_line(SERVERINFO_REQUEST),
-            ],
-        )
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_instance_switch_causes_refresh(self):
         """Test that an instance switch causes a full refresh."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
+        self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
 
         instance = 1
-        switched = {
+        switch_response = {
             "command": "instance-switchTo",
             "info": {"instance": instance},
             "success": True,
-            "tan": 0,
         }
-        self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
-        self._add_expected_reads(reader, reads=[self._to_json_line(switched)])
-        self._add_expected_reads_from_files(
-            reader, filenames=[JSON_FILENAME_SERVERINFO_RESPONSE]
-        )
 
-        await hc._async_manage_connection_once()
+        await rw.add_flow(
+            [
+                ("read", switch_response),
+                ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
+                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}}),
+            ]
+        )
+        await self._block_until_done(rw)
         self.assertEqual(hc.instance, instance)
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
         # Verify that post-disconnect the instance is preserved so next
         # connect() will re-join the same instance.
-        self.assertTrue(await hc.async_disconnect())
-        self.assertTrue(writer.close.called)
-        self.assertTrue(writer.wait_closed.called)
         self.assertFalse(hc.is_connected)
-        self.assertEqual(hc.instance, instance)
 
-    async def test_instance_switch_causes_disconnect_if_refresh_fails(self):
+        # Ensure there is no live instance, but that the target instance is the
+        # one that was switched to.
+        self.assertEqual(hc.instance, None)
+        self.assertEqual(hc.target_instance, instance)
+
+    async def test_instance_switch_causes_disconnect_and_reconnect_if_refresh_fails(
+        self,
+    ):
         """Test that an instance must get a full refresh or it will disconnect."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
 
         instance = 1
-        switched = {
+        instance_switch_response = {
             "command": "instance-switchTo",
             "info": {"instance": instance},
             "success": True,
-            "tan": 0,
         }
-        self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
-        self._add_expected_reads(
-            reader,
-            reads=[
-                self._to_json_line(switched),
-                "THIS IS NOT A VALID SERVERINFO AND SHOULD CAUSE A DISCONNECT" + "\n",
-            ],
-        )
-
-        self.assertFalse(writer.close.called)
-        self.assertFalse(writer.wait_closed.called)
-
-        await hc._async_manage_connection_once()
 
         self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
-        self.assertFalse(hc.is_connected)
 
-        self.assertTrue(writer.close.called)
-        self.assertTrue(writer.wait_closed.called)
+        instance_switchto_request = {
+            "command": "instance",
+            "subcommand": "switchTo",
+            "instance": instance,
+        }
+
+        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+            await rw.add_flow(
+                [
+                    ("read", instance_switch_response),
+                    ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
+                    (
+                        "read",
+                        "THIS IS NOT A VALID SERVERINFO AND SHOULD CAUSE A DISCONNECT"
+                        + "\n",
+                    ),
+                    ("close", None),
+                    ("write", {**instance_switchto_request, **{"tan": 3}}),
+                    ("read", {**instance_switch_response, **{"tan": 3}}),
+                    ("write", {**SERVERINFO_REQUEST, **{"tan": 4}}),
+                    (
+                        "read",
+                        {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 4}},
+                    ),
+                ]
+            )
+
+            await self._block_until_done(
+                rw, additional_wait_secs=const.DEFAULT_TIMEOUT_SECS
+            )
+
+        self.assertTrue(hc.is_connected)
+        self.assertEqual(hc.instance, instance)
+        self.assertEqual(hc.target_instance, instance)
+
+        await self._disconnect_and_assert_finished(rw, hc)
+
+        # Ensure there is no live instance, but that the target instance is the
+        # one that was switched to.
+        self.assertEqual(hc.instance, None)
+        self.assertEqual(hc.target_instance, instance)
 
     async def test_is_on(self):
         """Test the client reports correctly on whether components are on."""
-        (_, _, hc) = await self._create_and_test_basic_connected_client()
-        with open(self._get_test_filepath(JSON_FILENAME_SERVERINFO_RESPONSE)) as fh:
+        (rw, hc) = await self._create_and_test_basic_connected_client()
+
+        with open(self._get_test_filepath(FILE_SERVERINFO_RESPONSE)) as fh:
             serverinfo_command_response = fh.readline()
         serverinfo = json.loads(serverinfo_command_response)
 
@@ -304,52 +518,62 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
 
         # Verify default.
         self.assertTrue(hc.is_on())
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_update_component(self):
         """Test updating components."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
 
         # === Verify flipping a component.
-        component = {
+        components_update = {
             "command": "components-update",
             "data": {"enabled": False, "name": "SMOOTHING"},
         }
 
         self.assertTrue(hc.is_on(components=[const.KEY_COMPONENTID_SMOOTHING]))
-        self._add_expected_reads(reader, reads=[self._to_json_line(component)])
-        await hc._async_manage_connection_once()
+
+        await rw.add_flow([("read", components_update)])
+        await self._block_until_done(rw)
+
         self.assertFalse(hc.is_on(components=[const.KEY_COMPONENTID_SMOOTHING]))
 
         # === Verify a component change where the component name is not existing.
         component_name = "NOT_EXISTING"
-        component = {
+        components_update = {
             "command": "components-update",
             "data": {"enabled": True, "name": component_name},
         }
 
         self.assertFalse(hc.is_on(components=[component_name]))
-        self._add_expected_reads(reader, reads=[self._to_json_line(component)])
-        await hc._async_manage_connection_once()
+
+        await rw.add_flow([("read", components_update)])
+        await self._block_until_done(rw)
+
         self.assertTrue(hc.is_on(components=[component_name]))
 
-        self._verify_reader(reader)
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_update_adjustment(self):
         """Test updating adjustments."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
-        adjustment = {
+        (rw, hc) = await self._create_and_test_basic_connected_client()
+        adjustment_update = {
             "command": "adjustment-update",
             "data": [{"brightness": 25}],
         }
 
         self.assertEqual(hc.adjustment[0]["brightness"], 83)
-        self._add_expected_reads(reader, reads=[self._to_json_line(adjustment)])
-        await hc._async_manage_connection_once()
+
+        await rw.add_flow([("read", adjustment_update)])
+        await self._block_until_done(rw)
+
         self.assertEqual(hc.adjustment[0]["brightness"], 25)
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_update_effect_list(self):
         """Test updating effect list."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
+
         effect = {
             "args": {
                 "hueChange": 60,
@@ -362,19 +586,22 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "script": ":/effects//mood-blobs.py",
         }
 
-        effects = {
+        effects_update = {
             "command": "effects-update",
             "data": [effect],
         }
-        self.assertEqual(len(hc.effects), 39)
-        self._add_expected_reads(reader, reads=[self._to_json_line(effects)])
-        await hc._async_manage_connection_once()
+
+        await rw.add_flow([("read", effects_update)])
+        await self._block_until_done(rw)
+
         self.assertEqual(len(hc.effects), 1)
         self.assertEqual(hc.effects[0], effect)
 
+        await self._disconnect_and_assert_finished(rw, hc)
+
     async def test_update_priorities(self):
         """Test updating priorities."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
 
         priorities = [
             {
@@ -403,7 +630,7 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
                 "visible": False,
             },
         ]
-        priorities_command = {
+        priorities_update = {
             "command": "priorities-update",
             "data": {"priorities": priorities, "priorities_autoselect": False},
         }
@@ -411,25 +638,30 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         self.assertEqual(len(hc.priorities), 2)
         self.assertTrue(hc.priorities_autoselect)
         self.assertEqual(hc.visible_priority["priority"], 240)
-        self._add_expected_reads(reader, reads=[self._to_json_line(priorities_command)])
-        await hc._async_manage_connection_once()
+
+        await rw.add_flow([("read", priorities_update)])
+        await self._block_until_done(rw)
+
         self.assertEqual(hc.priorities, priorities)
         self.assertEqual(hc.visible_priority, priorities[0])
         self.assertFalse(hc.priorities_autoselect)
 
-        priorities_command = {
+        priorities_update = {
             "command": "priorities-update",
             "data": {"priorities": [], "priorities_autoselect": True},
         }
 
-        self._add_expected_reads(reader, reads=[self._to_json_line(priorities_command)])
-        await hc._async_manage_connection_once()
+        await rw.add_flow([("read", priorities_update)])
+        await self._block_until_done(rw)
+
         self.assertIsNone(hc.visible_priority)
         self.assertTrue(hc.priorities_autoselect)
 
+        await self._disconnect_and_assert_finished(rw, hc)
+
     async def test_update_instances(self):
         """Test updating instances."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
 
         instances = [
             {"instance": 0, "running": True, "friendly_name": "Test instance 0"},
@@ -437,31 +669,36 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             {"instance": 2, "running": True, "friendly_name": "Test instance 2"},
         ]
 
-        instances_command = {
+        instances_update = {
             "command": "instance-update",
             "data": instances,
         }
 
         self.assertEqual(len(hc.instances), 2)
-        self._add_expected_reads(reader, reads=[self._to_json_line(instances_command)])
-        await hc._async_manage_connection_once()
+        await rw.add_flow([("read", instances_update)])
+        await self._block_until_done(rw)
         self.assertEqual(hc.instances, instances)
 
         # Switch to instance 1
         instance = 1
-        switched = {
+        instance_switchto_update = {
             "command": "instance-switchTo",
             "info": {"instance": instance},
             "success": True,
             "tan": 0,
         }
-        self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
-        self._add_expected_reads(reader, reads=[self._to_json_line(switched)])
-        self._add_expected_reads_from_files(
-            reader, filenames=[JSON_FILENAME_SERVERINFO_RESPONSE]
-        )
 
-        await hc._async_manage_connection_once()
+        self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
+
+        await rw.add_flow(
+            [
+                ("read", instance_switchto_update),
+                ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
+                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}}),
+            ]
+        )
+        await self._block_until_done(rw)
+
         self.assertEqual(hc.instance, instance)
 
         # Now update instances again to exclude instance 1 (it should reset to 0).
@@ -471,40 +708,43 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             {"instance": 2, "running": True, "friendly_name": "Test instance 2"},
         ]
 
-        instances_command = {
+        instances_update = {
             "command": "instance-update",
             "data": instances,
         }
 
-        self._add_expected_reads(reader, reads=[self._to_json_line(instances_command)])
-        self._add_expected_reads_from_files(
-            reader, filenames=[JSON_FILENAME_SERVERINFO_RESPONSE]
+        await rw.add_flow(
+            [
+                ("read", instances_update),
+                ("write", {**SERVERINFO_REQUEST, **{"tan": 3}}),
+                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 3}}),
+            ]
         )
+        await self._block_until_done(rw)
 
-        await hc._async_manage_connection_once()
         self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_update_led_mapping_type(self):
         """Test updating LED mapping type."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
 
         led_mapping_type = "unicolor_mean"
 
-        led_mapping_type_command = {
+        led_mapping_type_update = {
             "command": "imageToLedMapping-update",
             "data": {"imageToLedMappingType": led_mapping_type},
         }
 
         self.assertNotEqual(hc.led_mapping_type, led_mapping_type)
-        self._add_expected_reads(
-            reader, reads=[self._to_json_line(led_mapping_type_command)]
-        )
-        await hc._async_manage_connection_once()
+        await rw.add_flow([("read", led_mapping_type_update)])
+        await self._block_until_done(rw)
         self.assertEqual(hc.led_mapping_type, led_mapping_type)
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_update_sessions(self):
         """Test updating sessions."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
 
         sessions = [
             {
@@ -517,51 +757,53 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             }
         ]
 
-        sessions_command = {
+        sessions_update = {
             "command": "sessions-update",
             "data": sessions,
         }
 
         self.assertEqual(hc.sessions, [])
-        self._add_expected_reads(reader, reads=[self._to_json_line(sessions_command)])
-        await hc._async_manage_connection_once()
+        await rw.add_flow([("read", sessions_update)])
+        await self._block_until_done(rw)
         self.assertEqual(hc.sessions, sessions)
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_videomode(self):
         """Test updating videomode."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
 
         videomode = "3DSBS"
 
-        videomode_update_command = {
+        videomode_update = {
             "command": "videomode-update",
             "data": {"videomode": videomode},
         }
 
         self.assertEqual(hc.videomode, "2D")
-
-        self._add_expected_reads(
-            reader, reads=[self._to_json_line(videomode_update_command)]
-        )
-        await hc._async_manage_connection_once()
+        await rw.add_flow([("read", videomode_update)])
+        await self._block_until_done(rw)
         self.assertEqual(hc.videomode, videomode)
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_update_leds(self):
         """Test updating LEDs."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
 
         leds = [{"hmin": 0.0, "hmax": 1.0, "vmin": 0.0, "vmax": 1.0}]
-
-        leds_command = {"command": "leds-update", "data": {"leds": leds}}
+        leds_update = {"command": "leds-update", "data": {"leds": leds}}
 
         self.assertEqual(len(hc.leds), 254)
-        self._add_expected_reads(reader, reads=[self._to_json_line(leds_command)])
-        await hc._async_manage_connection_once()
+        await rw.add_flow([("read", leds_update)])
+        await self._block_until_done(rw)
         self.assertEqual(hc.leds, leds)
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_async_send_set_color(self):
         """Test controlling color."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         color_in = {
             "color": [0, 0, 255],
             "command": "color",
@@ -569,8 +811,9 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "priority": 50,
         }
 
+        await rw.add_flow([("write", color_in)])
         self.assertTrue(await hc.async_send_set_color(**color_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(color_in)])
+        await self._block_until_done(rw)
 
         color_in = {
             "color": [0, 0, 255],
@@ -583,12 +826,15 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "origin": const.DEFAULT_ORIGIN,
         }
 
+        await rw.add_flow([("write", color_out)])
         self.assertTrue(await hc.async_send_set_color(**color_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(color_out)])
+        await self._block_until_done(rw)
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_async_send_set_effect(self):
         """Test controlling effect."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         effect_in = {
             "command": "effect",
             "effect": {"name": "Warm mood blobs"},
@@ -596,8 +842,8 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "origin": "My Fancy App",
         }
 
+        await rw.add_flow([("write", effect_in)])
         self.assertTrue(await hc.async_send_set_effect(**effect_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(effect_in)])
 
         effect_in = {
             "effect": {"name": "Warm mood blobs"},
@@ -610,12 +856,14 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "origin": const.DEFAULT_ORIGIN,
         }
 
+        await rw.add_flow([("write", effect_out)])
         self.assertTrue(await hc.async_send_set_effect(**effect_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(effect_out)])
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_async_send_set_image(self):
         """Test controlling image."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         image_in = {
             "command": "image",
             "imagedata": "VGhpcyBpcyBubyBpbWFnZSEgOik=",
@@ -626,8 +874,8 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "origin": "My Fancy App",
         }
 
+        await rw.add_flow([("write", image_in)])
         self.assertTrue(await hc.async_send_set_image(**image_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(image_in)])
 
         image_in = {
             "imagedata": "VGhpcyBpcyBubyBpbWFnZSEgOik=",
@@ -647,66 +895,72 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "origin": const.DEFAULT_ORIGIN,
         }
 
+        await rw.add_flow([("write", image_out)])
         self.assertTrue(await hc.async_send_set_image(**image_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(image_out)])
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_async_send_clear(self):
         """Test clearing priorities."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         clear_in = {
             "command": "clear",
             "priority": 50,
         }
 
+        await rw.add_flow([("write", clear_in)])
         self.assertTrue(await hc.async_send_clear(**clear_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(clear_in)])
+        await rw.add_flow([("write", clear_in)])
         self.assertTrue(await hc.async_send_clear(priority=50))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(clear_in)])
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_async_send_set_adjustment(self):
         """Test setting adjustment."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         adjustment_in = {"command": "adjustment", "adjustment": {"gammaRed": 1.5}}
 
+        await rw.add_flow([("write", adjustment_in)])
         self.assertTrue(await hc.async_send_set_adjustment(**adjustment_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(adjustment_in)])
+        await rw.add_flow([("write", adjustment_in)])
         self.assertTrue(
             await hc.async_send_set_adjustment(adjustment={"gammaRed": 1.5})
         )
-        self._verify_expected_writes(writer, writes=[self._to_json_line(adjustment_in)])
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_async_send_set_led_mapping_type(self):
         """Test setting adjustment."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         led_mapping_type_in = {
             "command": "processing",
             "mappingType": "multicolor_mean",
         }
 
+        await rw.add_flow([("write", led_mapping_type_in)])
         self.assertTrue(await hc.async_send_set_led_mapping_type(**led_mapping_type_in))
-        self._verify_expected_writes(
-            writer, writes=[self._to_json_line(led_mapping_type_in)]
-        )
+        await rw.add_flow([("write", led_mapping_type_in)])
         self.assertTrue(
             await hc.async_send_set_led_mapping_type(mappingType="multicolor_mean")
         )
-        self._verify_expected_writes(
-            writer, writes=[self._to_json_line(led_mapping_type_in)]
-        )
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_async_send_set_videomode(self):
         """Test setting videomode."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         videomode_in = {"command": "videomode", "videoMode": "3DTAB"}
 
+        await rw.add_flow([("write", videomode_in)])
         self.assertTrue(await hc.async_send_set_videomode(**videomode_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(videomode_in)])
+        await rw.add_flow([("write", videomode_in)])
         self.assertTrue(await hc.async_send_set_videomode(videoMode="3DTAB"))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(videomode_in)])
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_async_send_set_component(self):
         """Test setting component."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         componentstate = {
             "component": "LEDDEVICE",
             "state": False,
@@ -716,90 +970,97 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "componentstate": componentstate,
         }
 
+        await rw.add_flow([("write", component_in)])
         self.assertTrue(await hc.async_send_set_component(**component_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(component_in)])
+        await rw.add_flow([("write", component_in)])
         self.assertTrue(
             await hc.async_send_set_component(componentstate=componentstate)
         )
-        self._verify_expected_writes(writer, writes=[self._to_json_line(component_in)])
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_async_send_set_sourceselect(self):
         """Test setting sourceselect."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         sourceselect_in = {"command": "sourceselect", "priority": 50}
 
+        await rw.add_flow([("write", sourceselect_in)])
         self.assertTrue(await hc.async_send_set_sourceselect(**sourceselect_in))
-        self._verify_expected_writes(
-            writer, writes=[self._to_json_line(sourceselect_in)]
-        )
+        await rw.add_flow([("write", sourceselect_in)])
         self.assertTrue(await hc.async_send_set_sourceselect(priority=50))
-        self._verify_expected_writes(
-            writer, writes=[self._to_json_line(sourceselect_in)]
-        )
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_start_async_send_stop_switch_instance(self):
         """Test starting, stopping and switching instances."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         start_in = {"command": "instance", "subcommand": "startInstance", "instance": 1}
 
+        await rw.add_flow([("write", start_in)])
         self.assertTrue(await hc.async_send_start_instance(**start_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
+        await rw.add_flow([("write", start_in)])
         self.assertTrue(await hc.async_send_start_instance(instance=1))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
 
         stop_in = {"command": "instance", "subcommand": "stopInstance", "instance": 1}
 
+        await rw.add_flow([("write", stop_in)])
         self.assertTrue(await hc.async_send_stop_instance(**stop_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
+        await rw.add_flow([("write", stop_in)])
         self.assertTrue(await hc.async_send_stop_instance(instance=1))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
 
         switch_in = {"command": "instance", "subcommand": "switchTo", "instance": 1}
 
+        await rw.add_flow([("write", switch_in)])
         self.assertTrue(await hc.async_send_switch_instance(**switch_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(switch_in)])
+        await rw.add_flow([("write", switch_in)])
         self.assertTrue(await hc.async_send_switch_instance(instance=1))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(switch_in)])
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_start_async_send_stop_image_stream(self):
         """Test starting and stopping an image stream."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         start_in = {"command": "ledcolors", "subcommand": "imagestream-start"}
 
+        await rw.add_flow([("write", start_in)])
         self.assertTrue(await hc.async_send_image_stream_start(**start_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
+        await rw.add_flow([("write", start_in)])
         self.assertTrue(await hc.async_send_image_stream_start())
-        self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
 
         stop_in = {"command": "ledcolors", "subcommand": "imagestream-stop"}
 
+        await rw.add_flow([("write", stop_in)])
         self.assertTrue(await hc.async_send_image_stream_stop(**stop_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
+        await rw.add_flow([("write", stop_in)])
         self.assertTrue(await hc.async_send_image_stream_stop())
-        self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_async_send_start_stop_led_stream(self):
         """Test starting and stopping an led stream."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         start_in = {"command": "ledcolors", "subcommand": "ledstream-start"}
 
+        await rw.add_flow([("write", start_in)])
         self.assertTrue(await hc.async_send_led_stream_start(**start_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
+        await rw.add_flow([("write", start_in)])
         self.assertTrue(await hc.async_send_led_stream_start())
-        self._verify_expected_writes(writer, writes=[self._to_json_line(start_in)])
 
         stop_in = {"command": "ledcolors", "subcommand": "ledstream-stop"}
 
+        await rw.add_flow([("write", stop_in)])
         self.assertTrue(await hc.async_send_led_stream_stop(**stop_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
+        await rw.add_flow([("write", stop_in)])
         self.assertTrue(await hc.async_send_led_stream_stop())
-        self._verify_expected_writes(writer, writes=[self._to_json_line(stop_in)])
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_callbacks(self):
         """Test updating components."""
         received_default_json = None
         received_json = None
-        connection_json = None
+        client_json_list = []
+        serverinfo_json = None
 
         def default_callback(json):
             nonlocal received_default_json
@@ -809,33 +1070,71 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             nonlocal received_json
             received_json = json
 
-        def connection_callback(json):
-            nonlocal connection_json
-            connection_json = json
+        def client_callback(json):
+            nonlocal client_json_list
+            client_json_list.append(json)
 
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client(
+        def serverinfo_callback(json):
+            nonlocal serverinfo_json
+            serverinfo_json = json
+
+        (rw, hc) = await self._create_and_test_basic_connected_client(
             default_callback=default_callback,
             callbacks={
                 "components-update": callback,
-                "connection-update": connection_callback,
+                "serverinfo": serverinfo_callback,
+                "client-update": client_callback,
             },
         )
 
         self.assertEqual(
-            connection_json, {"command": "connection-update", "connected": True}
+            client_json_list,
+            [
+                {
+                    "command": "client-update",
+                    "connected": True,
+                    "logged-in": False,
+                    "instance": None,
+                    "loaded-state": False,
+                },
+                {
+                    "command": "client-update",
+                    "connected": True,
+                    "logged-in": True,
+                    "instance": None,
+                    "loaded-state": False,
+                },
+                {
+                    "command": "client-update",
+                    "connected": True,
+                    "logged-in": True,
+                    "instance": const.DEFAULT_INSTANCE,
+                    "loaded-state": False,
+                },
+                {
+                    "command": "client-update",
+                    "connected": True,
+                    "logged-in": True,
+                    "instance": const.DEFAULT_INSTANCE,
+                    "loaded-state": True,
+                },
+            ],
         )
 
+        self.assertEqual(serverinfo_json, self._read_file(FILE_SERVERINFO_RESPONSE))
+
         # === Flip a component.
-        component = {
+        components_update = {
             "command": "components-update",
             "data": {"enabled": False, "name": "SMOOTHING"},
         }
 
         # Make sure the callback was called.
-        self._add_expected_reads(reader, reads=[self._to_json_line(component)])
-        await hc._async_manage_connection_once()
+        await rw.add_flow([("read", components_update)])
+        await self._block_until_done(rw)
+
         self.assertIsNone(received_default_json)
-        self.assertEqual(received_json, component)
+        self.assertEqual(received_json, components_update)
 
         # Reset the callback variable, call with a new update that does not
         # have a registered callback.
@@ -844,18 +1143,15 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         random_update = {
             "command": random_update_value,
         }
-
-        self._add_expected_reads(reader, reads=[self._to_json_line(random_update)])
-        await hc._async_manage_connection_once()
-
+        await rw.add_flow([("read", random_update)])
+        await self._block_until_done(rw)
         self.assertEqual(received_default_json, random_update)
         self.assertIsNone(received_json)
 
         # Now add a callback for that update.
         hc.set_callbacks({random_update_value: callback})
-        self._add_expected_reads(reader, reads=[self._to_json_line(random_update)])
-        await hc._async_manage_connection_once()
-
+        await rw.add_flow([("read", random_update)])
+        await self._block_until_done(rw)
         self.assertEqual(received_json, random_update)
 
         # Reset default callback variable.
@@ -863,49 +1159,48 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         hc.set_default_callback(None)
 
         # Verify that the default callback is not called.
-        self._add_expected_reads(reader, reads=[self._to_json_line(component)])
-        await hc._async_manage_connection_once()
+        await rw.add_flow([("read", components_update)])
+        await self._block_until_done(rw)
         self.assertIsNone(received_default_json)
 
         # Verify disconnection callback.
-        hc.set_callbacks({"connection-update": connection_callback})
-        connection_json = None
-        self.assertTrue(await hc.async_disconnect())
+        hc.set_callbacks({"client-update": client_callback})
+        await self._disconnect_and_assert_finished(rw, hc)
+
         self.assertEqual(
-            connection_json, {"command": "connection-update", "connected": False}
+            client_json_list[-1],
+            {
+                "command": "client-update",
+                "connected": False,
+                "instance": None,
+                "loaded-state": False,
+                "logged-in": False,
+            },
         )
 
     async def test_is_auth_required(self):
         """Test determining if authorization is required."""
-        is_auth_required = None
+        (rw, hc) = await self._create_and_test_basic_connected_client()
 
-        def auth_callback(json):
-            nonlocal is_auth_required
-            is_auth_required = json[const.KEY_INFO][const.KEY_REQUIRED]
-
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client(
-            callbacks={"authorize-tokenRequired": auth_callback},
-        )
-
-        auth_request = {"command": "authorize", "subcommand": "tokenRequired"}
+        auth_request = {"command": "authorize", "subcommand": "tokenRequired", "tan": 2}
 
         auth_response = {
             "command": "authorize-tokenRequired",
             "info": {"required": True},
             "success": True,
-            "tan": 0,
+            "tan": 2,
         }
 
-        self.assertTrue(await hc.async_send_is_auth_required())
-        self._verify_expected_writes(writer, writes=[self._to_json_line(auth_request)])
+        await rw.add_flow([("write", auth_request), ("read", auth_response)])
+        received = await hc.async_is_auth_required()
+        await self._block_until_done(rw)
+        self.assertEqual(received, auth_response)
 
-        self._add_expected_reads(reader, reads=[self._to_json_line(auth_response)])
-        await hc._async_manage_connection_once()
-        self.assertTrue(is_auth_required)
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_async_send_login(self):
         """Test setting videomode."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         token = "sekrit"
         auth_login_in = {
             "command": "authorize",
@@ -913,43 +1208,48 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "token": token,
         }
 
+        await rw.add_flow([("write", auth_login_in)])
         self.assertTrue(await hc.async_send_login(**auth_login_in))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(auth_login_in)])
+        await rw.add_flow([("write", auth_login_in)])
         self.assertTrue(await hc.async_send_login(token=token))
-        self._verify_expected_writes(writer, writes=[self._to_json_line(auth_login_in)])
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_async_send_logout(self):
         """Test setting videomode."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        before_tasks = asyncio.all_tasks()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         auth_logout_in = {
             "command": "authorize",
             "subcommand": "logout",
         }
 
+        await rw.add_flow([("write", auth_logout_in)])
         self.assertTrue(await hc.async_send_logout(**auth_logout_in))
-        self._verify_expected_writes(
-            writer, writes=[self._to_json_line(auth_logout_in)]
-        )
+        await rw.add_flow([("write", auth_logout_in)])
         self.assertTrue(await hc.async_send_logout())
-        self._verify_expected_writes(
-            writer, writes=[self._to_json_line(auth_logout_in)]
-        )
 
         # A logout success response should cause the client to disconnect.
         auth_logout_out = {
             "command": "authorize-logout",
             "success": True,
         }
-        self._add_expected_reads(reader, reads=[self._to_json_line(auth_logout_out)])
-        await hc._async_manage_connection_once()
-        self.assertTrue(writer.close.called)
-        self.assertTrue(writer.wait_closed.called)
+
+        await rw.add_flow([("read", auth_logout_out), ("close", None)])
+
+        await self._block_until_done(rw)
         self.assertFalse(hc.is_connected)
-        self.assertFalse(hc.manage_connection)
+        await rw.assert_flow_finished()
+
+        # Verify there are no tasks left running (logout is interesting
+        # in that the disconnection is from the receive task, so cancellation
+        # of the receive task could cut the disconnection process off).
+        after_tasks = asyncio.all_tasks()
+
+        self.assertEqual(before_tasks, after_tasks)
 
     async def test_async_send_request_token(self):
         """Test requesting an auth token."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
 
         # Test requesting a token.
         request_token_in = {
@@ -959,10 +1259,8 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "id": "T3c92",
         }
 
+        await rw.add_flow([("write", request_token_in)])
         self.assertTrue(await hc.async_send_request_token(**request_token_in))
-        self._verify_expected_writes(
-            writer, writes=[self._to_json_line(request_token_in)]
-        )
 
         # Test requesting a token with minimal provided parameters, will cause
         # the ID to be automatically generated.
@@ -970,93 +1268,85 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "comment": "Test",
         }
 
-        self.assertTrue(await hc.async_send_request_token(**small_request_token_in))
+        # Ensure an ID gets generated.
+        await rw.add_flow(
+            [
+                (
+                    "write",
+                    lambda x: (
+                        len(x.get("id")) == 5
+                        and [x.get(key) for key in ["command", "subcommand", "comment"]]
+                        == [
+                            request_token_in.get(key)
+                            for key in ["command", "subcommand", "comment"]
+                        ]
+                    ),
+                )
+            ]
+        )
 
-        # Do manual verification of the write calls to ensure the ID argument
-        # gets set to some random value.
-        name, args, kwargs = writer.write.mock_calls[0]
-        data = json.loads(args[0])
-        self.assertEqual(len(data), 4)
-        for key in ["command", "subcommand", "comment"]:
-            self.assertEqual(data[key], request_token_in[key])
-        self.assertEqual(len(data[const.KEY_ID]), 5)
-        writer.reset_mock()
+        self.assertTrue(await hc.async_send_request_token(**small_request_token_in))
 
         # Abort a request for a token.
         request_token_in["accept"] = False
+        await rw.add_flow([("write", request_token_in)])
         self.assertTrue(await hc.async_send_request_token_abort(**request_token_in))
-        self._verify_expected_writes(
-            writer, writes=[self._to_json_line(request_token_in)]
-        )
+        await self._disconnect_and_assert_finished(rw, hc)
 
-    def test_threaded_client(self):
-        """Test the threaded client."""
-        # An authorize-logout should cause the listening thread to disconnect.
-        auth_logout_out = {
-            "command": "authorize-logout",
-            "success": True,
-        }
+    async def test_async_send_serverinfo(self):
+        """Test requesting serverinfo."""
+        (rw, hc) = await self._create_and_test_basic_connected_client()
 
-        reader = self._create_mock_reader(filenames=[JSON_FILENAME_SERVERINFO_RESPONSE])
-        writer = self._create_mock_writer()
+        await rw.add_flow([("write", SERVERINFO_REQUEST)])
+        self.assertTrue(await hc.async_send_get_serverinfo(**SERVERINFO_REQUEST))
+        await self._disconnect_and_assert_finished(rw, hc)
 
-        with asynctest.mock.patch(
-            "asyncio.open_connection", return_value=(reader, writer)
-        ):
-            hc = client.ThreadedHyperionClient(
-                TEST_HOST,
-                TEST_PORT,
-            )
+    #    TODO: Rewrite threaded client to be entirely self-contained.
+    #    async def test_threaded_client(self):
+    #        """Test the threaded client."""
+    #        # An authorize-logout should cause the listening thread to disconnect.
+    #        auth_logout_out = {
+    #            "command": "authorize-logout",
+    #            "success": True,
+    #        }
+    #
+    #        rw = MockStreamReaderWriter(
+    #            [('write', {**SERVERINFO_REQUEST, **{'tan': 1}}),
+    #             ('read', {**self._read_file(FILE_SERVERINFO_RESPONSE), **{'tan':1}})])
+    #
+    #        with asynctest.mock.patch(
+    #            "asyncio.open_connection", return_value=(rw, rw)
+    #        ):
+    #            hc = client.ThreadedHyperionClient(
+    #                TEST_HOST,
+    #                TEST_PORT,
+    #            )
+    #
+    #            # Start the loop in the other thread.
+    #            hc.start()
+    #
+    #            # Connect.
+    #            self.assertTrue(hc.client_connect())
+    #        return
+    #        await self._block_until_done(rw)
+    #        self.assertTrue(hc.is_connected)
+    #        return
+    #        await rw.add_flow([('read', auth_logout_out)])
+    #        await self._block_until_done(rw)
+    #
+    #        hc.stop()
+    #        hc.join()
+    #
+    #        self.assertFalse(hc.is_connected)
+    #        await self._disconnect_and_assert_finished(rw, hc)
 
-            # Start the loop in the other thread.
-            hc.start()
-
-            # Connect.
-            self.assertTrue(hc.connect())
-
-        serverinfo_request_json = self._to_json_line(SERVERINFO_REQUEST)
-        self._verify_expected_writes(writer, writes=[serverinfo_request_json])
-        self.assertTrue(hc.is_connected)
-
-        self._add_expected_reads(reader, reads=[self._to_json_line(auth_logout_out)])
-        hc.start_background_task()
-
-        hc.stop()
-        hc.join()
-
-        self.assertFalse(hc.is_connected)
-        self._verify_reader(reader)
-
-    async def test_background_task_stop(self):
+    async def test_disconnecting_leaves_no_tasks(self):
         """Verify stopping the background task."""
-        reader = asynctest.mock.Mock(asyncio.StreamReader)
-        writer = self._create_mock_writer()
-
-        cv = asyncio.Condition()
-
-        async def block_forever():
-            async with cv:
-                # Notify the caller that we're blocked.
-                cv.notify_all()
-            while True:
-                await asyncio.sleep(10)
-
-        reader.readline.side_effect = block_forever
-
-        with asynctest.mock.patch(
-            "asyncio.open_connection", return_value=(reader, writer)
-        ):
-            hc = client.HyperionClient(TEST_HOST, TEST_PORT, loop=self.loop)
-
-            async with cv:
-                # Start the background task, which will attempt to read and get stuck.
-                hc.start_background_task()
-
-                # Wait for notification of being blocked.
-                # await cv.wait()
-                await asyncio.wait_for(cv.wait(), timeout=3)
-
-                hc.stop_background_task()
+        before_tasks = asyncio.all_tasks()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
+        await self._disconnect_and_assert_finished(rw, hc)
+        after_tasks = asyncio.all_tasks()
+        self.assertEqual(before_tasks, after_tasks)
 
     def test_threaded_client_has_correct_methods(self):
         """Verify the threaded client exports all the correct methods."""
@@ -1074,109 +1364,165 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
 
     async def test_client_write_and_close_handles_network_issues(self):
         """Verify sending data does not throw exceptions."""
-        (_, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
 
         # Verify none of these write operations result in an exception
         # propagating to the test.
 
-        writer.write.side_effect = ConnectionError("Write exception")
+        await rw.add_flow([("write", ConnectionError("Write exception"))])
         self.assertFalse(await hc.async_send_image_stream_start())
-        writer.write.side_effect = None
 
-        writer.drain.side_effect = ConnectionError("Drain exception")
-        self.assertFalse(await hc.async_send_image_stream_start())
-        writer.drain.side_effect = None
+        await rw.add_flow([("close", ConnectionError("Close exception"))])
+        self.assertFalse(await hc.async_client_disconnect())
 
-        writer.close.side_effect = ConnectionError("Close exception")
-        self.assertFalse(await hc.async_disconnect())
-        writer.close.side_effect = None
+        await rw.assert_flow_finished()
 
-        writer.wait_closed.side_effect = ConnectionError("Wait closed exception")
-        self.assertFalse(await hc.async_disconnect())
-        writer.wait_closed.side_effect = None
-
-    async def test_client_read_handles_network_issues(self):
+    async def test_client_handles_network_issues_and_reconnects(self):
         """Verify sending data does not throw exceptions."""
 
-        # Verify none of these read operations result in an exception
-        # propagating to the test.
+        # == Verify a read exception causes a disconnect.
+        (rw, hc) = await self._create_and_test_basic_connected_client()
 
-        (reader, _, hc) = await self._create_and_test_basic_connected_client()
-        reader.readline.side_effect = ConnectionError("Read exception")
-        await hc._async_manage_connection_once()
-        reader.readline.side_effect = None
+        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+            await rw.add_flow(
+                [
+                    ("read", ConnectionError("Read exception")),
+                    ("close", None),
+                    ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
+                    (
+                        "read",
+                        {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}},
+                    ),
+                ]
+            )
+            await self._block_until_done(rw)
+            await self._disconnect_and_assert_finished(rw, hc)
 
-        (reader, _, hc) = await self._create_and_test_basic_connected_client()
-        reader.readline.side_effect = [""]
-        await hc._async_manage_connection_once()
-        reader.readline.side_effect = None
+        # == Verify an empty read causes a disconnect and reconnect.
+        (rw, hc) = await self._create_and_test_basic_connected_client()
+
+        # Stage 1: Read returns empty, connection closed, but instantly re-established.
+        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+            await rw.add_flow(
+                [
+                    ("read", ""),
+                    ("close", None),
+                    ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
+                    (
+                        "read",
+                        {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}},
+                    ),
+                ]
+            )
+            await self._block_until_done(rw)
+
+        # Stage 2: Read throws an exception, connection closed, cannot be re-established.
+        with asynctest.mock.patch(
+            "asyncio.open_connection", side_effect=ConnectionError
+        ):
+            await rw.add_flow(
+                [("read", ConnectionError("Connect error")), ("close", None)]
+            )
+            await rw.block_until_flow_empty()
+
+            # Stage 3: Wait f"{const.DEFAULT_CONNECTION_RETRY_DELAY_SECS}" seconds
+            # Check at half that timeout that we're still not connected.
+            self.assertFalse(hc.is_connected)
+            await self.advance(const.DEFAULT_CONNECTION_RETRY_DELAY_SECS / 2)
+            self.assertFalse(hc.is_connected)
+
+            # Stage 4: Fast-forward the remaining half of the timeout (+1 to ensure
+            # we're definitely on the far side of the timeout), and it should automatically
+            # reload.
+            with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+                await rw.add_flow(
+                    [
+                        ("write", {**SERVERINFO_REQUEST, **{"tan": 3}}),
+                        (
+                            "read",
+                            {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 3}},
+                        ),
+                    ]
+                )
+
+                await self.advance((const.DEFAULT_CONNECTION_RETRY_DELAY_SECS / 2) + 1)
+                await self._block_until_done(rw)
+
+            await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_client_connect_handles_network_issues(self):
-        """Verify sending data does not throw exceptions."""
+        """Verify connecting does throw exceptions and behaves correctly."""
 
-        # Verify none of these connect operations result in an exception
-        # propagating to the test.
+        (rw, hc) = await self._create_and_test_basic_connected_client()
 
         with asynctest.mock.patch(
             "asyncio.open_connection",
             side_effect=ConnectionError("Connection exception"),
         ):
-            hc = client.HyperionClient(TEST_HOST, TEST_PORT, loop=self.loop)
-            self.assertFalse(await hc.async_connect())
+            await rw.add_flow([("read", ""), ("close", None)])
+            await rw.block_until_flow_empty()
+            self.assertFalse(hc.is_connected)
+            self.assertTrue(await hc.async_client_disconnect())
+            await rw.assert_flow_finished()
 
     async def test_client_id(self):
         """Verify sending data does not throw exceptions."""
 
-        (_, _, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         self.assertTrue(hc.id, "%s:%i-%i" % (TEST_HOST, TEST_PORT, TEST_INSTANCE))
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_client_timeout(self):
         """Verify connection and read timeouts behave correctly."""
 
-        # Verify timeout is dealt with correctly during connection.
+        # == Verify timeout is dealt with correctly during connection.
         with asynctest.mock.patch(
             "asyncio.open_connection", side_effect=asyncio.TimeoutError
         ):
             hc = client.HyperionClient(TEST_HOST, TEST_PORT, loop=self.loop)
-            self.assertFalse(await hc.async_connect())
+            self.assertFalse(await hc.async_client_connect())
 
-        # Verify timeout is dealt with correctly during readline.
-        reader = self._create_mock_reader()
-        writer = self._create_mock_writer()
-        with asynctest.mock.patch(
-            "asyncio.open_connection", return_value=(reader, writer)
-        ):
-            reader.readline.side_effect = asyncio.TimeoutError
-            hc = client.HyperionClient(TEST_HOST, TEST_PORT, loop=self.loop)
-            self.assertFalse(await hc.async_connect())
+        # == Verify timeout is dealt with during read.
+        (rw, hc) = await self._create_and_test_basic_connected_client()
+
+        await rw.add_flow([("write", {**SERVERINFO_REQUEST, **{"tan": 2}})])
+
+        # Create a new task to get the serverinfo ...
+        task = asyncio.create_task(hc.async_get_serverinfo())
+        # ... wait until the flow is empty (i.e. the request is written to the
+        # server).
+        await rw.block_until_flow_empty()
+
+        # Advance the clock so it times out waiting.
+        await self.advance(const.DEFAULT_TIMEOUT_SECS * 2)
+
+        # Ensuring the task fails.
+        self.assertFalse(await task)
+
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_send_and_receive(self):
         """Test a send and receive wrapper."""
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
-        clear_in = {"command": "clear", "priority": 50, "tan": 1}
-        clear_out = {"command": "clear", "success": True, "tan": 1}
+        (rw, hc) = await self._create_and_test_basic_connected_client()
+        clear_in = {"command": "clear", "priority": 50, "tan": 2}
+        clear_out = {"command": "clear", "success": True, "tan": 2}
 
-        # Test a successful request & response.
-        self._add_expected_reads(reader, reads=[self._to_json_line(clear_out)])
-        fut_request = hc.async_clear(priority=50)
-        fut_manage = hc._async_manage_connection_once()
-        result_a, result_b = await asyncio.gather(fut_request, fut_manage)
-        self.assertEqual(result_a, clear_out)
-        self.assertEqual(result_b, None)
-        self._verify_expected_writes(writer, writes=[self._to_json_line(clear_in)])
+        # == Successful request & response.
+        await rw.add_flow([("write", clear_in), ("read", clear_out)])
+        self.assertEqual(clear_out, await hc.async_clear(priority=50))
 
-        # Test a successful request & failed response.
+        # == Successful request & failed response.
         clear_out["success"] = False
-        clear_out["tan"] = clear_in["tan"] = 2
-        self._add_expected_reads(reader, reads=[self._to_json_line(clear_out)])
-        fut_request = hc.async_clear(priority=50)
-        fut_manage = hc._async_manage_connection_once()
-        result_a, result_b = await asyncio.gather(fut_request, fut_manage)
-        self.assertEqual(result_a, clear_out)
-        self.assertEqual(result_b, None)
-        self._verify_expected_writes(writer, writes=[self._to_json_line(clear_in)])
+        clear_out["tan"] = clear_in["tan"] = 3
 
-        # Test when the result never arrives for a given tan.
+        await rw.add_flow([("write", clear_in), ("read", clear_out)])
+        self.assertEqual(clear_out, await hc.async_clear(priority=50))
+
+        # == Mismatch tan / timeout
+        # Test when the result doesn't include a matching tan (should time
+        # out). See related bug to include tan wherever possible:
+        #
+        # https://github.com/hyperion-project/hyperion.ng/issues/1001
         clear_error = {
             "command": "clear",
             "error": "Errors during specific message validation, "
@@ -1184,54 +1530,41 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
             "success": False,
             "tan": 0,
         }
+        clear_in["tan"] = 4
 
-        clear_in["tan"] = 3
-        self._add_expected_reads(reader, reads=[self._to_json_line(clear_error)])
+        await rw.add_flow([("write", clear_in), ("read", clear_error)])
 
-        with asynctest.mock.patch(
-            "asyncio.Condition.wait_for", side_effect=asyncio.TimeoutError
-        ):
-            fut_request = hc.async_clear(priority=50)
-            fut_manage = hc._async_manage_connection_once()
-            result_a, result_b = await asyncio.gather(fut_request, fut_manage)
-        self.assertEqual(result_a, None)
-        self.assertEqual(result_b, None)
-        self._verify_expected_writes(writer, writes=[self._to_json_line(clear_in)])
+        task = asyncio.create_task(hc.async_clear(priority=50))
+        await rw.block_until_flow_empty()
+        await self.advance(const.DEFAULT_TIMEOUT_SECS * 2)
+        self.assertEqual(None, await task)
 
-        # Test with the request send raising an exception.
-        writer.write.side_effect = ConnectionError()
+        # == Exception thrown in send.
+        await rw.add_flow([("write", ConnectionError())])
         result = await hc.async_clear(**clear_in)
         self.assertEqual(result, None)
 
+        await self._disconnect_and_assert_finished(rw, hc)
+
     async def test_using_custom_tan(self):
         """Test a send and receive wrapper."""
-
-        (reader, writer, hc) = await self._create_and_test_basic_connected_client()
+        (rw, hc) = await self._create_and_test_basic_connected_client()
         clear_in = {"command": "clear", "priority": 50, "tan": 100}
         clear_out = {"command": "clear", "success": True, "tan": 100}
 
         # Test a successful call with a custom tan.
-        self._add_expected_reads(reader, reads=[self._to_json_line(clear_out)])
-        fut_request = hc.async_clear(priority=50, tan=100)
-        fut_manage = hc._async_manage_connection_once()
-        result_a, result_b = await asyncio.gather(fut_request, fut_manage)
-        self.assertEqual(result_a, clear_out)
-        self.assertEqual(result_b, None)
-        self._verify_expected_writes(writer, writes=[self._to_json_line(clear_in)])
+        await rw.add_flow([("write", clear_in), ("read", clear_out)])
+        self.assertEqual(clear_out, await hc.async_clear(priority=50, tan=100))
 
         # Test a call with a duplicate tan (will raise an exception).
-        self._add_expected_reads(reader, reads=[self._to_json_line(clear_out)])
+        await rw.add_flow([("write", clear_in), ("read", clear_out)])
 
         with self.assertRaises(client.HyperionClientTanNotAvailable):
-            result_a, result_b, result_c = await asyncio.gather(
+            await asyncio.gather(
                 hc.async_clear(priority=50, tan=100),
                 hc.async_clear(priority=50, tan=100),
-                hc._async_manage_connection_once(),
             )
-
-        self.assertEqual(result_a, clear_out)
-        self.assertEqual(result_b, None)
-        self._verify_expected_writes(writer, writes=[self._to_json_line(clear_in)])
+        await rw.assert_flow_finished()
 
         # Test a custom tan and an automated tan, should succeed with the automated
         # tan choosing the next number.
@@ -1239,39 +1572,24 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
         clear_in_2 = {"command": "clear", "priority": 50, "tan": 2}
         clear_out_1 = {"command": "clear", "success": True, "tan": 1}
         clear_out_2 = {"command": "clear", "success": True, "tan": 2}
-        self._add_expected_reads(reader, reads=[self._to_json_line(clear_out_1)])
-        self._add_expected_reads(reader, reads=[self._to_json_line(clear_out_2)])
 
-        async def two_manage_connections():
-            for i in range(0, 2):
-                await hc._async_manage_connection_once()
+        await rw.add_flow(
+            [
+                ("write", clear_in_1),
+                ("write", clear_in_2),
+                ("read", clear_out_1),
+                ("read", clear_out_2),
+            ]
+        )
 
-        result_a, result_b, result_c = await asyncio.gather(
+        result_a, result_b = await asyncio.gather(
             hc.async_clear(priority=50, tan=1),
             hc.async_clear(priority=50),
-            two_manage_connections(),
         )
         self.assertEqual(result_a, clear_out_1)
         self.assertEqual(result_b, clear_out_2)
-        self._verify_expected_writes(
-            writer,
-            writes=[self._to_json_line(clear_in_1), self._to_json_line(clear_in_2)],
-        )
 
-    async def test_async_connect_after_background_task_start(self):
-        """Ensure calling connect() after start_background_task() raises exception."""
-        reader = self._create_mock_reader(filenames=[JSON_FILENAME_SERVERINFO_RESPONSE])
-        writer = self._create_mock_writer()
-
-        with asynctest.mock.patch(
-            "asyncio.open_connection", return_value=(reader, writer)
-        ):
-            hc = client.HyperionClient(TEST_HOST, TEST_PORT, loop=asynctest.Mock())
-
-        # Set the management task to ~anything.
-        hc._manage_connection_task = asynctest.Mock()
-        with self.assertRaises(client.HyperionClientConnectAfterStartError):
-            await hc.async_connect()
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_async_send_calls_have_await_call(self):
         """Verify async_send_* methods have an async_* pair."""
@@ -1285,6 +1603,29 @@ class AsyncHyperionClientTestCase(asynctest.TestCase):
                 #     .__self__ -> AwaitResponseWrapper
                 #         ._coro -> The wrapped coroutine within AwaitResponseWrapper.
                 self.assertEqual(wrapper.func.__self__._coro, value)
+
+    async def test_double_connect(self):
+        """Test the behavior of a double connect call."""
+        (rw, hc) = await self._create_and_test_basic_connected_client()
+
+        await rw.add_flow(
+            [
+                ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
+                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}}),
+            ]
+        )
+
+        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+            self.assertTrue(await hc.async_client_connect())
+            self.assertTrue(hc.is_connected)
+
+        await rw.assert_flow_finished()
+
+    async def test_double_disconnect(self):
+        """Test the behavior of a double disconnect call."""
+        (rw, hc) = await self._create_and_test_basic_connected_client()
+        await self._disconnect_and_assert_finished(rw, hc)
+        self.assertTrue(await hc.async_client_disconnect())
 
 
 class ResponseTestCase(unittest.TestCase):
