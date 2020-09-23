@@ -78,7 +78,6 @@ class HyperionClient:
         origin: str = const.DEFAULT_ORIGIN,
         timeout_secs: int = const.DEFAULT_TIMEOUT_SECS,
         retry_secs=const.DEFAULT_CONNECTION_RETRY_DELAY_SECS,
-        loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
         """Initialize client."""
         _LOGGER.debug("HyperionClient initiated with: (%s:%i)", host, port)
@@ -93,7 +92,6 @@ class HyperionClient:
         self._origin = origin
         self._timeout_secs = timeout_secs
         self._retry_secs = retry_secs
-        self._loop = loop or asyncio.get_event_loop()
 
         self._serverinfo: Optional[Dict] = None
 
@@ -1250,10 +1248,9 @@ class ThreadedHyperionClient(threading.Thread):
     ) -> None:
         """Initialize client."""
         super().__init__()
-
         self._loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
         self._hc: Optional[HyperionClient] = None
-        self._init_client_call = lambda: HyperionClient(
+        self._client_init_call = lambda: HyperionClient(
             host,
             port,
             default_callback=default_callback,
@@ -1263,11 +1260,9 @@ class ThreadedHyperionClient(threading.Thread):
             origin=origin,
             timeout_secs=timeout_secs,
             retry_secs=retry_secs,
-            loop=self._loop,
         )
         self._client_init_event = threading.Event()
 
-    # TODO Consider removing _loop as an argument.
     def wait_for_client_init(self):
         """Block until the HyperionClient is ready to interact."""
         self._client_init_event.wait()
@@ -1278,7 +1273,7 @@ class ThreadedHyperionClient(threading.Thread):
         # Some asyncio elements of the client (e.g. Conditions / Events) bind
         # to asyncio.get_event_loop() on construction.
 
-        self._hc = self._init_client_call()
+        self._hc = self._client_init_call()
 
         for name, value in inspect.getmembers(self._hc, inspect.iscoroutinefunction):
             if name.startswith("async_"):
@@ -1310,15 +1305,17 @@ class ThreadedHyperionClient(threading.Thread):
         """Stop the asyncio loop and thus the thread."""
 
         def inner_stop():
-            self._loop.stop()
+            asyncio.get_event_loop().stop()
 
         self._loop.call_soon_threadsafe(inner_stop)
 
     def run(self) -> None:
         """Run the asyncio loop until stop is called."""
-        self._loop.run_until_complete(self._async_init_client())
+        asyncio.set_event_loop(self._loop)
+        asyncio.get_event_loop().run_until_complete(self._async_init_client())
         self._client_init_event.set()
-        self._loop.run_forever()
+        asyncio.get_event_loop().run_forever()
+        asyncio.get_event_loop().close()
 
 
 class ResponseOK:

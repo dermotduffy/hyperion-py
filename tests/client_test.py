@@ -1470,7 +1470,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         with asynctest.mock.patch(
             "asyncio.open_connection", side_effect=asyncio.TimeoutError
         ):
-            hc = client.HyperionClient(TEST_HOST, TEST_PORT, loop=self.loop)
+            hc = client.HyperionClient(TEST_HOST, TEST_PORT)
             self.assertFalse(await hc.async_client_connect())
 
         # == Verify timeout is dealt with during read.
