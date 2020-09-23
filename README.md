@@ -72,17 +72,22 @@ documentation](https://docs.hyperion-project.org/en/json/).
 
 ```python
 #!/usr/bin/python
+"""Simple Hyperion client read demonstration."""
 
 import asyncio
 from hyperion import client, const
 
 HOST = "hyperion"
 
+
 async def print_brightness():
+    """Print Hyperion brightness."""
+
     hyperion_client = client.HyperionClient(HOST)
     if not await hyperion_client.async_client_connect():
         return
     print("Brightness: %i%%" % hyperion_client.adjustment[0][const.KEY_BRIGHTNESS])
+
 
 if __name__ == "__main__":
     asyncio.get_event_loop().run_until_complete(print_brightness())
@@ -111,18 +116,23 @@ subscription updates.
 
 ```python
 #!/usr/bin/python
+"""Simple Hyperion client request demonstration."""
 
 import asyncio
 from hyperion import client
 
 HOST = "hyperion"
 
+
 async def print_if_auth_required():
+    """Print whether auth is required."""
+
     hc = client.HyperionClient(HOST)
     await hc.async_client_connect()
 
     result = await hc.async_is_auth_required()
     print("Result: %s" % result)
+
 
 asyncio.get_event_loop().run_until_complete(print_if_auth_required())
 ```
@@ -161,14 +171,19 @@ This can be used to take special action as the client connects or disconnects fr
 
 ```python
 #!/usr/bin/python
+"""Simple Hyperion client callback demonstration."""
 
 import asyncio
 from hyperion import client
 
 HOST = "hyperion"
 
+
 def callback(json):
+    """Sample callback function."""
+
     print("Received Hyperion callback: %s" % json)
+
 
 if __name__ == "__main__":
     hyperion_client = client.HyperionClient(HOST, default_callback=callback)
@@ -204,10 +219,11 @@ with it. This method call will block the caller until the client has been initia
 
 ```python
 #!/usr/bin/python
+"""Simple Threaded Hyperion client demonstration."""
 
 from hyperion import client, const
 
-HOST = 'hyperion'
+HOST = "hyperion"
 
 if __name__ == "__main__":
     hyperion_client = client.ThreadedHyperionClient(HOST)
