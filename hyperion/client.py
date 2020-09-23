@@ -650,10 +650,6 @@ class HyperionClient:
             response = None
             if await self._coro(client, *args, **data):
                 response = await client._wait_for_tan_response(tan)
-                # fut = asyncio.run_coroutine_threadsafe(
-                #    client._wait_for_tan_response(tan),
-                #    client._loop)
-                # response = fut.result()
             await client._remove_tan_slot(tan)
             return response
 
@@ -1237,8 +1233,7 @@ class HyperionClient:
     async_set_videomode = AwaitResponseWrapper(async_send_set_videomode)
 
 
-# TODO: Make this actually work.
-class ThreadedHyperionClient(HyperionClient, threading.Thread):
+class ThreadedHyperionClient(threading.Thread):
     """Hyperion Client that runs in a dedicated thread."""
 
     def __init__(
@@ -1254,10 +1249,11 @@ class ThreadedHyperionClient(HyperionClient, threading.Thread):
         retry_secs=const.DEFAULT_CONNECTION_RETRY_DELAY_SECS,
     ) -> None:
         """Initialize client."""
-        loop = asyncio.new_event_loop()
-        threading.Thread.__init__(self)
-        HyperionClient.__init__(
-            self,
+        super().__init__()
+
+        self._loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
+        self._hc: Optional[HyperionClient] = None
+        self._init_client_call = lambda: HyperionClient(
             host,
             port,
             default_callback=default_callback,
@@ -1267,19 +1263,41 @@ class ThreadedHyperionClient(HyperionClient, threading.Thread):
             origin=origin,
             timeout_secs=timeout_secs,
             retry_secs=retry_secs,
-            loop=loop,
+            loop=self._loop,
         )
+        self._client_init_event = threading.Event()
 
-        for name, value in inspect.getmembers(self):
-            if name.startswith("async_") and callable(value):
+    # TODO Consider removing _loop as an argument.
+    def wait_for_client_init(self):
+        """Block until the HyperionClient is ready to interact."""
+        self._client_init_event.wait()
+
+    async def _async_init_client(self) -> None:
+        """Initialize the client."""
+        # Initialize the client in the new thread, using the new event loop.
+        # Some asyncio elements of the client (e.g. Conditions / Events) bind
+        # to asyncio.get_event_loop() on construction.
+
+        self._hc = self._init_client_call()
+
+        for name, value in inspect.getmembers(self._hc, inspect.iscoroutinefunction):
+            if name.startswith("async_"):
                 new_name = name[len("async_") :]
-                self._register_sync_call(new_name, value)
+                self._register_async_call(new_name, value)
+        for name, value in inspect.getmembers(
+            type(self._hc), lambda o: isinstance(o, property)
+        ):
+            self._copy_property(name)
 
-    def _register_sync_call(self, new_name: str, value: Coroutine) -> None:
-        """Register a sync version of an async call."""
+    def _copy_property(self, name):
+        """Register a property."""
+        setattr(type(self), name, getattr(self._hc, name))
+
+    def _register_async_call(self, name: str, value: Coroutine) -> None:
+        """Register a wrapped async call."""
         setattr(
             self,
-            new_name,
+            name,
             lambda *args, **kwargs: self._async_wrapper(value, *args, **kwargs),
         )
 
@@ -1291,17 +1309,15 @@ class ThreadedHyperionClient(HyperionClient, threading.Thread):
     def stop(self):
         """Stop the asyncio loop and thus the thread."""
 
-        async def inner_stop(self):
+        def inner_stop():
             self._loop.stop()
 
-        def cancel_and_stop():
-            self.stop_background_task()
-            asyncio.create_task(inner_stop(self))
-
-        self._loop.call_soon_threadsafe(cancel_and_stop)
+        self._loop.call_soon_threadsafe(inner_stop)
 
     def run(self) -> None:
         """Run the asyncio loop until stop is called."""
+        self._loop.run_until_complete(self._async_init_client())
+        self._client_init_event.set()
         self._loop.run_forever()
 
 

@@ -1301,45 +1301,6 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         self.assertTrue(await hc.async_send_get_serverinfo(**SERVERINFO_REQUEST))
         await self._disconnect_and_assert_finished(rw, hc)
 
-    #    TODO: Rewrite threaded client to be entirely self-contained.
-    #    async def test_threaded_client(self):
-    #        """Test the threaded client."""
-    #        # An authorize-logout should cause the listening thread to disconnect.
-    #        auth_logout_out = {
-    #            "command": "authorize-logout",
-    #            "success": True,
-    #        }
-    #
-    #        rw = MockStreamReaderWriter(
-    #            [('write', {**SERVERINFO_REQUEST, **{'tan': 1}}),
-    #             ('read', {**self._read_file(FILE_SERVERINFO_RESPONSE), **{'tan':1}})])
-    #
-    #        with asynctest.mock.patch(
-    #            "asyncio.open_connection", return_value=(rw, rw)
-    #        ):
-    #            hc = client.ThreadedHyperionClient(
-    #                TEST_HOST,
-    #                TEST_PORT,
-    #            )
-    #
-    #            # Start the loop in the other thread.
-    #            hc.start()
-    #
-    #            # Connect.
-    #            self.assertTrue(hc.client_connect())
-    #        return
-    #        await self._block_until_done(rw)
-    #        self.assertTrue(hc.is_connected)
-    #        return
-    #        await rw.add_flow([('read', auth_logout_out)])
-    #        await self._block_until_done(rw)
-    #
-    #        hc.stop()
-    #        hc.join()
-    #
-    #        self.assertFalse(hc.is_connected)
-    #        await self._disconnect_and_assert_finished(rw, hc)
-
     async def test_disconnecting_leaves_no_tasks(self):
         """Verify stopping the background task."""
         before_tasks = asyncio.all_tasks()
@@ -1347,6 +1308,29 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         await self._disconnect_and_assert_finished(rw, hc)
         after_tasks = asyncio.all_tasks()
         self.assertEqual(before_tasks, after_tasks)
+
+    async def test_threaded_client(self):
+        """Test the threaded client."""
+
+        hc = client.ThreadedHyperionClient(
+            TEST_HOST,
+            TEST_PORT,
+        )
+
+        # Start the loop in the other thread.
+        hc.start()
+        hc.wait_for_client_init()
+
+        # Note: MockStreamReaderWriter is not thread safe, so only a very limited test
+        # is performed here.
+        with asynctest.mock.patch(
+            "asyncio.open_connection", side_effect=ConnectionError
+        ):
+            self.assertFalse(hc.client_connect())
+            self.assertFalse(hc.is_connected)
+
+        hc.stop()
+        hc.join()
 
     def test_threaded_client_has_correct_methods(self):
         """Verify the threaded client exports all the correct methods."""
@@ -1358,9 +1342,16 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         )
 
         # Verify all async methods have a sync wrapped version.
-        for name in contents:
+        for name, value in inspect.getmembers(
+            client.ThreadedHyperionClient, inspect.iscoroutinefunction
+        ):
             if name.startswith("async_"):
                 self.assertIn(name[len("async_") :], contents)
+
+        for name, value in inspect.getmembers(
+            client.ThreadedHyperionClient, lambda o: isinstance(o, property)
+        ):
+            self.assertIn(name, contents)
 
     async def test_client_write_and_close_handles_network_issues(self):
         """Verify sending data does not throw exceptions."""
