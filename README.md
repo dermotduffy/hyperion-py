@@ -31,8 +31,8 @@ data model (e.g. new Hyperion server features) belong to the caller.
 
 ### Connection & Disconnection
 
-   * async_connect()
-   * async_disconnect()
+   * async_client_connect()
+   * async_client_disconnect()
 
 ### Native API Calls
 |Send request and await response|Send request only|Documentation|
@@ -80,7 +80,7 @@ HOST = "hyperion"
 
 async def print_brightness():
     hyperion_client = client.HyperionClient(HOST)
-    if not await hyperion_client.async_connect():
+    if not await hyperion_client.async_client_connect():
         return
     print("Brightness: %i%%" % hyperion_client.adjustment[0][const.KEY_BRIGHTNESS])
 
@@ -112,19 +112,19 @@ subscription updates.
 ```python
 #!/usr/bin/python
 
+import asyncio
 from hyperion import client
 
-async def go():
-    hc = client.HyperionClient('hyperion')
-    await hc.async_connect()
+HOST = "hyperion"
 
-    hc.start_background_task()
+async def print_if_auth_required():
+    hc = client.HyperionClient(HOST)
+    await hc.async_client_connect()
 
     result = await hc.async_is_auth_required()
     print("Result: %s" % result)
 
-import asyncio
-asyncio.get_event_loop().run_until_complete(go())
+asyncio.get_event_loop().run_until_complete(print_if_auth_required())
 ```
 
 Output:
@@ -160,33 +160,45 @@ This can be used to take special action as the client connects or disconnects fr
 #### Example: Callbacks
 
 ```python
-from hyperion import client, const
+#!/usr/bin/python
+
+import asyncio
+from hyperion import client
 
 HOST = "hyperion"
 
 def callback(json):
-    print("Received Hyperion command: %s" % json)
+    print("Received Hyperion callback: %s" % json)
 
 if __name__ == "__main__":
     hyperion_client = client.HyperionClient(HOST, default_callback=callback)
-    asyncio.get_event_loop().run_until_complete(hyperion_client.async_connect())
-
-    # Start client in "background".
-    hyperion_client.start_background_task()
+    asyncio.get_event_loop().run_until_complete(hyperion_client.async_client_connect())
     asyncio.get_event_loop().run_forever()
 ```
 
-Output:
+Output, showing the progression of connection stages:
 
 ```
-Received Hyperion command: {'command': 'connection-update', 'connected': True}
+Received Hyperion callback: {'connected': True, 'logged-in': False, 'instance': None, 'loaded-state': False, 'command': 'client-update'}
+Received Hyperion callback: {'connected': True, 'logged-in': True, 'instance': None, 'loaded-state': False, 'command': 'client-update'}
+Received Hyperion callback: {'connected': True, 'logged-in': True, 'instance': 0, 'loaded-state': False, 'command': 'client-update'}
+Received Hyperion callback: {'command': 'serverinfo', ... }
+Received Hyperion callback: {'connected': True, 'logged-in': True, 'instance': 0, 'loaded-state': True, 'command': 'client-update'}
 ```
 
 ## ThreadedHyperionClient
 
 A `ThreadedHyperionClient` is also provided as a convenience wrapper to for
 non-async code. The `ThreadedHyperionClient` wraps the async calls with
-non-async versions (without the `async_` on the method names shown above).
+non-async versions (methods are named as shown above, except do not start with
+`async_`).
+
+### Waiting for the thread to initialize the client
+
+The thread must be given a chance to initialize the client prior to interaction
+with it. This method call will block the caller until the client has been initialized.
+
+   * wait_for_client_init()
 
 ### Example use of Threaded client
 
@@ -195,7 +207,7 @@ non-async versions (without the `async_` on the method names shown above).
 
 from hyperion import client, const
 
-HOST = "hyperion"
+HOST = 'hyperion'
 
 if __name__ == "__main__":
     hyperion_client = client.ThreadedHyperionClient(HOST)
@@ -203,10 +215,16 @@ if __name__ == "__main__":
     # Start the asyncio loop in a new thread.
     hyperion_client.start()
 
+    # Wait for the client to initialize in the new thread.
+    hyperion_client.wait_for_client_init()
+
     # Connect the client.
-    hyperion_client.connect()
+    hyperion_client.client_connect()
 
     print("Brightness: %i%%" % hyperion_client.adjustment[0][const.KEY_BRIGHTNESS])
+
+    # Disconnect the client.
+    hyperion_client.client_disconnect()
 
     # Stop the loop (will stop the thread).
     hyperion_client.stop()
@@ -233,14 +251,6 @@ error.
 ### HyperionError
 
 Not directly raised, but other exceptions inherit from this.
-
-### HyperionClientConnectAfterStartError
-
-Exception raised if `connect()` or `async_connect()` is called after
-`start_background_task()`. Either *only* `start_background_task()` should be
-called (it will automatically connect), or `async_connect()`/`connect()` should
-be called first, followed by `start_background_task()` once the connect call
-has returned.
 
 ### HyperionClientTanNotAvailable
 
