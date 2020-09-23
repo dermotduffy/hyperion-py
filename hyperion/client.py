@@ -22,10 +22,6 @@ class HyperionError(Exception):
     """Baseclass for all Hyperion exceptions."""
 
 
-class HyperionClientConnectAfterStartError(HyperionError):
-    """An exception indicating async_connect() called inappropriately."""
-
-
 class HyperionClientTanNotAvailable(HyperionError):
     """An exception indicating the requested tan is not available."""
 
@@ -251,34 +247,30 @@ class HyperionClient:
 
     async def async_client_disconnect(self) -> bool:
         """Close streams to the Hyperion server (no reconnect)."""
-        result = await self._async_client_disconnect_internal(stop_receive_task=False)
-
         # Cancel the maintenance task to ensure the connection is not re-established.
         await self._await_or_stop_task(self._maintenance_task, stop_task=True)
         self._maintenance_task = None
 
-        receive_task = self._receive_task
-        self._receive_task = None
-        await self._await_or_stop_task(receive_task, stop_task=True)
-
-        # If this method is called from the receive task, execution will not reach here!
-        return result
+        return await self._async_client_disconnect_internal()
 
     async def _async_client_disconnect_internal(self, stop_receive_task=True) -> bool:
         """Close streams to the Hyperion server (may reconnect)."""
+        if not self._writer:
+            return True
+
         error = False
-        if self._writer:
-            try:
-                self._writer.close()
-                await self._writer.wait_closed()
-            except ConnectionError as exc:
-                _LOGGER.warning(
-                    "Could not close connection cleanly for Hyperion (%s): %s",
-                    self.id,
-                    repr(exc),
-                )
-                error = True
+        writer = self._writer
         self._writer = self._reader = None
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except ConnectionError as exc:
+            _LOGGER.warning(
+                "Could not close connection cleanly for Hyperion (%s): %s",
+                self.id,
+                repr(exc),
+            )
+            error = True
 
         await self._client_state_reset()
         self._call_client_state_callback_if_necessary()
@@ -286,9 +278,9 @@ class HyperionClient:
         # Tell the maintenance loop it may need to reconnect.
         self._maintenance_event.set()
 
-        if stop_receive_task:
-            await self._await_or_stop_task(self._receive_task, stop_task=True)
-            self._receive_task = None
+        receive_task = self._receive_task
+        self._receive_task = None
+        await self._await_or_stop_task(receive_task, stop_task=True)
         return not error
 
     async def _async_send_json(self, request: Dict) -> bool:
@@ -332,8 +324,11 @@ class HyperionClient:
             return None
 
         if not resp:
-            _LOGGER.warning("Connection to Hyperion lost (%s) ...", self.id)
-            await self._async_client_disconnect_internal()
+            # If there's no writer, we have disconnected, so skip the error message
+            # and additional disconnect call.
+            if self._writer:
+                _LOGGER.warning("Connection to Hyperion lost (%s) ...", self.id)
+                await self._async_client_disconnect_internal()
             return None
 
         _LOGGER.debug("Read from server (%s): %s", self.id, resp)
@@ -1286,7 +1281,7 @@ class ThreadedHyperionClient(threading.Thread):
 
     def _copy_property(self, name):
         """Register a property."""
-        setattr(type(self), name, getattr(self._hc, name))
+        setattr(type(self), name, property(lambda _: getattr(self._hc, name)))
 
     def _register_async_call(self, name: str, value: Coroutine) -> None:
         """Register a wrapped async call."""
@@ -1300,6 +1295,10 @@ class ThreadedHyperionClient(threading.Thread):
         """Convert a async call to synchronous by running it in the local event loop."""
         future = asyncio.run_coroutine_threadsafe(coro(*args, **kwargs), self._loop)
         return future.result()
+
+    def __getattr__(self, name: str) -> Any:
+        """Override getattr to allow generous mypy treatment for dynamic methods."""
+        return getattr(self, name)
 
     def stop(self):
         """Stop the asyncio loop and thus the thread."""
