@@ -29,15 +29,19 @@ class HyperionClientTanNotAvailable(HyperionError):
 class HyperionClientState:
     """Class representing the Hyperion client state."""
 
-    def __init__(self, state={}):
+    def __init__(self, state: Dict = {}) -> None:
         """Initialize state object."""
-        self._state = state
-        self._dirty = False
+        self._state: Dict = state
+        self._dirty: bool = False
 
     @property
     def dirty(self) -> bool:
         """Return whether or state has been modified."""
         return self._dirty
+
+    @dirty.setter
+    def dirty(self, val: bool) -> None:
+        self._dirty = val
 
     def get(self, key: str) -> Any:
         """Retrieve a state element."""
@@ -164,7 +168,7 @@ class HyperionClient:
         """Return client state."""
         return self._client_state.get_all()
 
-    async def async_client_connect(self) -> bool:
+    async def async_client_connect(self, raw=False) -> bool:
         """Connect to the Hyperion server."""
 
         future_streams = asyncio.open_connection(self._host, self._port)
@@ -183,25 +187,28 @@ class HyperionClient:
         self._receive_task = asyncio.create_task(self._receive_task_loop())
 
         await self._client_state_reset()
-        self._client_state.set(const.KEY_CONNECTED, True)
+        self._client_state.update(
+            {const.KEY_CONNECTED: True, const.KEY_INSTANCE: const.DEFAULT_INSTANCE}
+        )
         self._call_client_state_callback_if_necessary()
 
-        if (
-            not self._client_state.get(const.KEY_LOGGED_IN)
-            and not await self._async_client_login()
-        ):
-            return False
+        if not raw:
+            if (
+                not self._client_state.get(const.KEY_LOGGED_IN)
+                and not await self._async_client_login()
+            ):
+                return False
 
-        if (
-            not self._client_state.get(const.KEY_INSTANCE)
-            and not await self._async_client_select_instance()
-        ):
-            return False
+            if (
+                not self._client_state.get(const.KEY_INSTANCE)
+                and not await self._async_client_select_instance()
+            ):
+                return False
 
-        if not self._client_state.get(
-            const.KEY_LOADED_STATE
-        ) and not ServerInfoResponseOK(await self.async_get_serverinfo()):
-            return False
+            if not self._client_state.get(
+                const.KEY_LOADED_STATE
+            ) and not ServerInfoResponseOK(await self.async_get_serverinfo()):
+                return False
 
         # Start the maintenance task if it does not already exist.
         if not self._maintenance_task:
@@ -220,6 +227,7 @@ class HyperionClient:
             },
         )
         self._call_callbacks(str(data[const.KEY_COMMAND]), data)
+        self._client_state.dirty = False
 
     async def _async_client_login(self) -> bool:
         """Log the client in if a token is provided."""
@@ -234,7 +242,7 @@ class HyperionClient:
         if (
             self._client_state.get(const.KEY_INSTANCE) is None
             and self._target_instance == const.DEFAULT_INSTANCE
-        ):
+        ) or self._client_state.get(const.KEY_INSTANCE) == self._target_instance:
             self._client_state.set(const.KEY_INSTANCE, self._target_instance)
             self._call_client_state_callback_if_necessary()
             return True

@@ -385,6 +385,24 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         self.assertEqual(hc.instance, TEST_INSTANCE)
         await self._disconnect_and_assert_finished(rw, hc)
 
+    async def test_async_client_connect_raw(self):
+        """Test a raw connection."""
+        rw = MockStreamReaderWriter()
+
+        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+            hc = client.HyperionClient(
+                TEST_HOST, TEST_PORT, instance=TEST_INSTANCE, token=TEST_TOKEN
+            )
+            self.assertTrue(await hc.async_client_connect(raw=True))
+
+        # It's a raw connection, it will not be logged in, nor instance selected.
+        self.assertTrue(hc.is_connected)
+        self.assertFalse(hc.is_logged_in)
+        self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
+        self.assertFalse(hc.has_loaded_state)
+
+        await self._disconnect_and_assert_finished(rw, hc)
+
     async def test_instance_switch_causes_refresh(self):
         """Test that an instance switch causes a full refresh."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
@@ -1088,20 +1106,12 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         )
 
         self.assertEqual(
-            client_json_list,
             [
                 {
                     "command": "client-update",
                     "connected": True,
                     "logged-in": False,
-                    "instance": None,
-                    "loaded-state": False,
-                },
-                {
-                    "command": "client-update",
-                    "connected": True,
-                    "logged-in": True,
-                    "instance": None,
+                    "instance": const.DEFAULT_INSTANCE,
                     "loaded-state": False,
                 },
                 {
@@ -1119,6 +1129,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
                     "loaded-state": True,
                 },
             ],
+            client_json_list,
         )
 
         self.assertEqual(serverinfo_json, self._read_file(FILE_SERVERINFO_RESPONSE))
