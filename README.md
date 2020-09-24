@@ -10,13 +10,13 @@ Python library for
 API](https://docs.hyperion-project.org/en/json/) for more details about the
 inputs and outputs of this library.
 
+# Installation
+
+```bash
+$ pip3 install hyperion-py
+```
+
 # Usage
-
-## Client API calls
-
-All API calls can be found in
-[client.py](https://github.com/dermotduffy/hyperion-py/blob/master/hyperion/client.py).
-All async calls start with `async_`.
 
 ## Data model philosophy
 
@@ -35,6 +35,11 @@ data model (e.g. new Hyperion server features) belong to the caller.
    * async_client_disconnect()
 
 ### Native API Calls
+
+All API calls can be found in
+[client.py](https://github.com/dermotduffy/hyperion-py/blob/master/hyperion/client.py).
+All async calls start with `async_`.
+
 |Send request and await response|Send request only|Documentation|
 |-------------------------------|-----------------|-------------|
 |async_clear|async_send_clear|[Docs](https://docs.hyperion-project.org/en/json/Control.html#clear)|
