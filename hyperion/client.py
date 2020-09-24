@@ -1332,7 +1332,7 @@ class ResponseOK:
             return False
         if not self._response.get(const.KEY_SUCCESS, False):
             return False
-        if self._response.get(const.KEY_COMMAND) != self._cmd:
+        if self._cmd is not None and self._response.get(const.KEY_COMMAND) != self._cmd:
             return False
         for validator in self._validators:
             if not validator(self._response):
