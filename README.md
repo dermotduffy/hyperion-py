@@ -148,6 +148,102 @@ Output:
 Result: {'command': 'authorize-tokenRequired', 'info': {'required': False}, 'success': True, 'tan': 1}
 ```
 
+#### Example: Sending commands
+
+A slightly more complex example that sends commands (clears the Hyperion source
+select at a given priority, then sets color at that same priority).
+
+```python
+#!/usr/bin/python
+"""Simple Hyperion client request demonstration."""
+
+import asyncio
+import logging
+import sys
+from hyperion import client
+
+HOST = "hyperion"
+PRIORITY = 20
+
+
+async def set_color():
+    """Set red color on Hyperion."""
+
+    hc = client.HyperionClient(HOST)
+
+    if not await hc.async_client_connect():
+        logging.error("Could not connect to: %s", HOST)
+        return
+
+    if not client.ResponseOK(
+        await hc.async_clear(priority=PRIORITY)
+    ) or not client.ResponseOK(
+        await hc.async_set_color(
+            color=[255, 0, 0], priority=PRIORITY, origin=sys.argv[0]
+        )
+    ):
+        logging.error("Could not clear/set_color on: %s", HOST)
+        return
+    await hc.async_client_disconnect()
+
+
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+asyncio.get_event_loop().run_until_complete(set_color())
+```
+
+#### Example: Starting and switching instances
+
+The following example will start a stopped instance, wait for it to be ready,
+then switch to it. Uses [callbacks](#callbacks), discussed below.
+
+
+```python
+#!/usr/bin/python
+"""Simple Hyperion client request demonstration."""
+
+import asyncio
+import logging
+import sys
+from hyperion import client
+
+HOST = "hyperion"
+PRIORITY = 20
+
+
+async def instance_start_and_switch():
+    """Wait for an instance to start."""
+
+    instance_ready = asyncio.Event()
+
+    def instance_update(json):
+        print("receive json %s", json)
+        for data in json["data"]:
+            if data["instance"] == 1 and data["running"]:
+                instance_ready.set()
+
+    hc = client.HyperionClient(HOST, callbacks={"instance-update": instance_update})
+
+    if not await hc.async_client_connect():
+        logging.error("Could not connect to: %s", HOST)
+        return
+
+    if not client.ResponseOK(await hc.async_start_instance(instance=1)):
+        logging.error("Could not start instance on: %s", HOST)
+        return
+
+    # Blocks waiting for the instance to start.
+    await instance_ready.wait()
+
+    if not client.ResponseOK(await hc.async_switch_instance(instance=1)):
+        logging.error("Could not switch instance on: %s", HOST)
+        return
+    await hc.async_client_disconnect()
+
+
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+asyncio.get_event_loop().run_until_complete(instance_start_and_switch())
+```
+
 ### Callbacks
 
 The client can be configured to callback as the Hyperion server reports new
