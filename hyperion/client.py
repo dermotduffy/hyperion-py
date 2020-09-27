@@ -723,12 +723,6 @@ class HyperionClient:
     # https://docs.hyperion-project.org/en/json/Authorization.html#request-a-token
     # ============================================================================
 
-    def generate_random_auth_id(self):
-        """Generate random authenticate ID."""
-        return "".join(
-            random.choice(string.ascii_letters + string.digits) for i in range(0, 5)
-        )
-
     async def async_send_request_token(self, *args: Any, **kwargs: Any) -> bool:
         """Request an authorization token.
 
@@ -740,7 +734,7 @@ class HyperionClient:
                 const.KEY_COMMAND: const.KEY_AUTHORIZE,
                 const.KEY_SUBCOMMAND: const.KEY_REQUEST_TOKEN,
             },
-            soft={const.KEY_ID: self.generate_random_auth_id()},
+            soft={const.KEY_ID: generate_random_auth_id()},
         )
         return await self._async_send_json(data)
 
@@ -1382,3 +1376,10 @@ class SwitchInstanceResponseOK(ResponseOK):
                 lambda r: r.get(const.KEY_INFO, {}).get(const.KEY_INSTANCE) is not None
             ],
         )
+
+
+def generate_random_auth_id():
+    """Generate random authenticate ID."""
+    return "".join(
+        random.choice(string.ascii_letters + string.digits) for i in range(0, 5)
+    )

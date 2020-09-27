@@ -1632,12 +1632,10 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
     async def test_generate_random_auth_id(self):
         """Test arandomly generated auth id."""
-        (rw, hc) = await self._create_and_test_basic_connected_client()
-        random_id = hc.generate_random_auth_id()
+        random_id = client.generate_random_auth_id()
         self.assertEqual(5, len(random_id))
         for c in random_id:
             self.assertTrue(c in string.ascii_letters + string.digits)
-        await self._disconnect_and_assert_finished(rw, hc)
 
 
 class ResponseTestCase(unittest.TestCase):
