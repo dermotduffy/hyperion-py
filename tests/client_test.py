@@ -1502,6 +1502,48 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         # Ensuring the task fails.
         self.assertFalse(await task)
 
+        # == Verify custom timeouts function in calls.
+        await rw.add_flow([("write", {**SERVERINFO_REQUEST, **{"tan": 3}})])
+
+        # Create a task that fetches serverinfo and will wait 3 times the default.
+        task = asyncio.create_task(
+            hc.async_get_serverinfo(timeout_secs=const.DEFAULT_TIMEOUT_SECS * 3)
+        )
+
+        # Wait 2 times the default (task should NOT have timed out)
+        await self.advance(const.DEFAULT_TIMEOUT_SECS * 2)
+
+        self.assertFalse(task.done())
+
+        # Wait a further two times (should have timed out)
+        await self.advance(const.DEFAULT_TIMEOUT_SECS * 2)
+        self.assertTrue(task.done())
+        self.assertFalse(await task)
+
+        # == Verify request_token has a much larger default timeout.
+        auth_id = ("T3c92",)
+        comment = const.DEFAULT_ORIGIN
+        request_token_in = {
+            "command": "authorize",
+            "subcommand": "requestToken",
+            "comment": comment,
+            "id": auth_id,
+        }
+
+        await rw.add_flow([("write", {**request_token_in, **{"tan": 4}})])
+
+        # Create a task that requests a token (without overriding the default timeout).
+        task = asyncio.create_task(
+            hc.async_request_token(comment=const.DEFAULT_ORIGIN, id=auth_id)
+        )
+
+        # Wait 2 times the default timeout (task should NOT have timed out)
+        await self.advance(const.DEFAULT_TIMEOUT_SECS * 2)
+        self.assertFalse(task.done())
+        await self.advance(const.DEFAULT_REQUEST_TOKEN_TIMEOUT_SECS)
+        self.assertTrue(task.done())
+        self.assertFalse(await task)
+
         await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_send_and_receive(self):

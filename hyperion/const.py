@@ -61,13 +61,13 @@ KEY_SUCCESS = "success"
 KEY_SWITCH_TO = "switchTo"
 KEY_STATE = "state"
 KEY_TAN = "tan"
+KEY_TIMEOUT_SECS = "timeout_secs"
 KEY_TOKEN = "token"
 KEY_TOKEN_REQUIRED = "tokenRequired"
 KEY_UPDATE = "update"
 KEY_VALUE = "value"
 KEY_VIDEOMODE = "videomode"
 KEY_VISIBLE = "visible"
-
 KEY_VIDEOMODES = ["2D", "3DSBS", "3DTAB"]
 
 # ComponentIDs from: https://docs.hyperion-project.org/en/json/Control.html#components-ids-explained
@@ -93,5 +93,6 @@ KEY_COMPONENTID_EXTERNAL_SOURCES = [
 DEFAULT_INSTANCE = 0
 DEFAULT_CONNECTION_RETRY_DELAY_SECS = 30
 DEFAULT_TIMEOUT_SECS = 5
+DEFAULT_REQUEST_TOKEN_TIMEOUT_SECS = 180
 DEFAULT_ORIGIN = "hyperion-py"
 DEFAULT_PORT = 19444

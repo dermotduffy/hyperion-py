@@ -11,7 +11,7 @@ import logging
 import random
 import string
 import threading
-from typing import Any, Callable, Dict, Coroutine, Optional
+from typing import Any, Callable, Dict, Coroutine, List, Optional
 
 from hyperion import const
 
@@ -607,16 +607,18 @@ class HyperionClient:
             if tan in self._tan_responses:
                 del self._tan_responses[tan]
 
-    async def _wait_for_tan_response(self, tan: int) -> Optional[Dict]:
+    async def _wait_for_tan_response(
+        self, tan: int, timeout_secs: int
+    ) -> Optional[Dict]:
         """Wait for a response to arrive."""
         await self._tan_cv.acquire()
         try:
             await asyncio.wait_for(
                 self._tan_cv.wait_for(lambda: self._tan_responses.get(tan) is not None),
-                timeout=self._timeout_secs,
+                timeout=timeout_secs,
             )
             return self._tan_responses[tan]
-        except asyncio.TimeoutError:  # asyncio.CancelledError
+        except asyncio.TimeoutError:
             pass
         except Exception:
             raise
@@ -633,11 +635,38 @@ class HyperionClient:
     class AwaitResponseWrapper:
         """Wrapper an async *send* coroutine and await the response."""
 
-        def __init__(self, coro):
-            """Initialize the wrapper."""
-            self._coro = coro
+        def __init__(self, coro, timeout_secs: float = 0):
+            """Initialize the wrapper.
 
-        async def __call__(self, client, *args, **kwargs):
+            Wait up to timeout_secs for a response. A timeout of 0
+            will use the client default timeout specified in the constructor.
+            A timeout of None will wait forever.
+            """
+            self._coro = coro
+            self._timeout_secs = timeout_secs
+
+        def _extract_timeout_secs(
+            self, client, data: Dict[str, Any]
+        ) -> Optional[float]:
+            """Return the timeout value for a call.
+
+            Modifies input! Removes the timeout key from the inbound data if
+            present so that it is not passed on to the server. If not present,
+            returns the wrapper default specified in the wrapper constructor.
+            """
+            # Timeout values:
+            #    * None: Wait forever (default asyncio.wait_for behavior).
+            #    * 0: Use the object default (self._timeout_secs)
+            #    * >0: Wait that long.
+            if const.KEY_TIMEOUT_SECS in data:
+                timeout_secs = data[const.KEY_TIMEOUT_SECS]
+                del data[const.KEY_TIMEOUT_SECS]
+                return timeout_secs
+            elif self._timeout_secs == 0:
+                return client._timeout_secs
+            return self._timeout_secs
+
+        async def __call__(self, client, *args: List, **kwargs: Dict[str, Any]):
             """Call the wrapper."""
             # The receive task should never be executing a call that uses the
             # AwaitResponseWrapper (as the response is itself handled by the receive
@@ -647,10 +676,11 @@ class HyperionClient:
 
             tan = await client._reserve_tan_slot(kwargs.get(const.KEY_TAN))
             data = client._set_data(kwargs, hard={const.KEY_TAN: tan})
+            timeout_secs = self._extract_timeout_secs(client, data)
 
             response = None
             if await self._coro(client, *args, **data):
-                response = await client._wait_for_tan_response(tan)
+                response = await client._wait_for_tan_response(tan, timeout_secs)
             await client._remove_tan_slot(tan)
             return response
 
@@ -738,7 +768,11 @@ class HyperionClient:
         )
         return await self._async_send_json(data)
 
-    async_request_token = AwaitResponseWrapper(async_send_request_token)
+    # This call uses a custom (longer) timeout by default, as the user needs to interact
+    # with the Hyperion UI before it will return.
+    async_request_token = AwaitResponseWrapper(
+        async_send_request_token, timeout_secs=const.DEFAULT_REQUEST_TOKEN_TIMEOUT_SECS
+    )
 
     async def async_send_request_token_abort(self, *args: Any, **kwargs: Any) -> bool:
         """Abort a request for an authorization token."""
