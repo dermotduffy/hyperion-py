@@ -378,6 +378,22 @@ it is the caller's responsibility to ensure no two simultaneous calls share a
 `tan` (as otherwise the client would not be able to match the call to the
 response, and this exception will be raised automatically prior to the call).
 
+## Timeouts
+
+The client makes liberal use of timeouts, which may be specified at multiple levels:
+
+   * In the client constructor argument `timeout_secs`, used for connection and requests.
+   * In each request using a `timeout_secs` argument to the individual calls
+
+Timeout values:
+
+   * `None`: If `None` is used as a timeout, the client will wait forever.
+   * `0`: If `0` is used as a timeout, the client default (specified in the constructor) will be used.
+   * `>0.0`: This number of seconds (or partial seconds) will be used.
+
+By default, all requests will honour the `timeout_secs` specified in the client constructor unless explicitly overriden and defaults to 5 seconds (see [const.py](https://github.com/dermotduffy/hyperion-py/blob/master/hyperion/const.py#L95)). The one exception to this is the `async_send_request_token` which has a much larger default (180 seconds, see [const.py](https://github.com/dermotduffy/hyperion-py/blob/master/hyperion/const.py#L96)) as this request involves the user needing the interact with the Hyperion UI prior to the call being able to return.
+
+
 ## Helpers
 
 ### ResponseOK
