@@ -70,7 +70,7 @@ class HyperionClient:
     def __init__(
         self,
         host: str,
-        port: int = const.DEFAULT_JSON_PORT,
+        port: int = const.DEFAULT_PORT_JSON,
         default_callback: Optional[Callable] = None,
         callbacks: Optional[Dict] = None,
         token: Optional[str] = None,
@@ -1272,7 +1272,7 @@ class ThreadedHyperionClient(threading.Thread):
     def __init__(
         self,
         host: str,
-        port: int = const.DEFAULT_JSON_PORT,
+        port: int = const.DEFAULT_PORT_JSON,
         default_callback: Optional[Callable] = None,
         callbacks: Optional[Dict] = None,
         token: Optional[str] = None,
