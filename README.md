@@ -378,3 +378,40 @@ automatically manage it in an incremental fashion), or if specified manually,
 it is the caller's responsibility to ensure no two simultaneous calls share a
 `tan` (as otherwise the client would not be able to match the call to the
 response, and this exception will be raised automatically prior to the call).
+
+## Helpers
+
+### ResponseOK
+
+A handful of convenience callable classes are provided to determine whether
+server responses were successful.
+
+   * `ResponseOK`: Whether any Hyperion command response was successful (general).
+   * `ServerInfoResponseOK`: Whether a `async_get_serverinfo` was successful.
+   * `LoginResponseOK`: Whether an `async_login` was successful.
+   * `SwitchInstanceResponseOK`: Whether an `async_switch_instance` command was successful.
+
+#### Example usage
+
+```
+if not client.ResponseOK(await hc.async_clear(priority=PRIORITY))
+```
+
+### Auth ID
+
+When requesting an auth token, a 5-character ID can be specified to ensure the
+admin user is authorizing the right request from the right origin. By default
+the `async_request_token` will randomly generate an ID, but if one is required
+to allow the user to confirm a match, it can be explicitly provided. In this case,
+this helper method is made available.
+
+   * `generate_random_auth_id`: Generate a random 5-character auth ID for external display and inclusion in a call to `async_request_token`.
+
+#### Example usage
+
+```
+auth_id  = hc.generate_random_auth_id()
+hc.async_send_login(comment="Trustworthy actor", id=auth_id)
+# Show auth_id to the user to allow them to verify the origin of the request,
+# then have them visit the Hyperion UI.
+```
