@@ -76,7 +76,7 @@ class HyperionClient:
         token: Optional[str] = None,
         instance: int = const.DEFAULT_INSTANCE,
         origin: str = const.DEFAULT_ORIGIN,
-        timeout_secs: int = const.DEFAULT_TIMEOUT_SECS,
+        timeout_secs: float = const.DEFAULT_TIMEOUT_SECS,
         retry_secs=const.DEFAULT_CONNECTION_RETRY_DELAY_SECS,
     ) -> None:
         """Initialize client."""
@@ -310,12 +310,14 @@ class HyperionClient:
             return False
         return True
 
-    async def _async_safely_read_command(self, timeout: bool = True) -> Optional[Dict]:
+    async def _async_safely_read_command(
+        self, use_timeout: bool = True
+    ) -> Optional[Dict]:
         """Safely read a command from the stream."""
         if not self._reader:
             return None
 
-        timeout_secs = self._timeout_secs if timeout else None
+        timeout_secs = self._timeout_secs if use_timeout else None
 
         try:
             future_resp = self._reader.readline()
@@ -439,7 +441,7 @@ class HyperionClient:
 
     async def _async_receive_once(self) -> bool:
         """Manage the bidirectional connection to the server."""
-        resp_json = await self._async_safely_read_command(timeout=False)
+        resp_json = await self._async_safely_read_command(use_timeout=False)
         if not resp_json:
             return False
         command = resp_json[const.KEY_COMMAND]
@@ -608,7 +610,7 @@ class HyperionClient:
                 del self._tan_responses[tan]
 
     async def _wait_for_tan_response(
-        self, tan: int, timeout_secs: int
+        self, tan: int, timeout_secs: float
     ) -> Optional[Dict]:
         """Wait for a response to arrive."""
         await self._tan_cv.acquire()
