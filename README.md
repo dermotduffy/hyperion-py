@@ -216,7 +216,6 @@ async def instance_start_and_switch():
     instance_ready = asyncio.Event()
 
     def instance_update(json):
-        print("receive json %s", json)
         for data in json["data"]:
             if data["instance"] == 1 and data["running"]:
                 instance_ready.set()
