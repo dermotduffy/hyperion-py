@@ -1001,7 +1001,7 @@ class HyperionClient:
     # =================================================================================
 
     @property
-    def instances(self) -> Dict:
+    def instances(self) -> List:
         """Return instances."""
         return self._get_serverinfo_value(const.KEY_INSTANCE)
 
