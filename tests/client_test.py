@@ -1679,6 +1679,42 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         for c in random_id:
             self.assertTrue(c in string.ascii_letters + string.digits)
 
+    async def test_sysinfo(self):
+        """Test the sysinfo command."""
+        (rw, hc) = await self._create_and_test_basic_connected_client()
+
+        sysinfo_in = {"command": "sysinfo", "tan": 2}
+        sysinfo_out = {
+            "command": "sysinfo",
+            "info": {
+                "hyperion": {
+                    "build": "fix-request-tan (GitHub-78458e44/5d5b2497-1601058791)",
+                    "gitremote": "https://github.com/hyperion-project/hyperion.ng.git",
+                    "id": "f9aab089-f85a-55cf-b7c1-222a72faebe9",
+                    "time": "Sep 29 2020 12:33:00",
+                    "version": "2.0.0-alpha.8",
+                },
+                "system": {
+                    "architecture": "arm",
+                    "domainName": "domain",
+                    "hostName": "hyperion",
+                    "kernelType": "linux",
+                    "kernelVersion": "5.4.51-v7l+",
+                    "prettyName": "Raspbian GNU/Linux 10 (buster)",
+                    "productType": "raspbian",
+                    "productVersion": "10",
+                    "wordSize": "32",
+                },
+            },
+            "success": True,
+            "tan": 2,
+        }
+
+        await rw.add_flow([("write", sysinfo_in), ("read", sysinfo_out)])
+        sysinfo = await hc.async_sysinfo()
+        self.assertEqual(sysinfo_out, sysinfo)
+        await self._disconnect_and_assert_finished(rw, hc)
+
 
 class ResponseTestCase(unittest.TestCase):
     """Test case for the Hyperion Client Response object."""

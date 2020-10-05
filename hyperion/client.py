@@ -1265,6 +1265,19 @@ class HyperionClient:
 
     async_set_videomode = AwaitResponseWrapper(async_send_set_videomode)
 
+    # ==================================================================================
+    # ** Sysinfo **
+    # ** Undocumented **
+    # Returns system information from the Hyperion instance.
+    # ==================================================================================
+
+    async def async_send_sysinfo(self, *args: Any, **kwargs: Any) -> bool:
+        """Request the sysinfo."""
+        data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_SYSINFO})
+        return await self._async_send_json(data)
+
+    async_sysinfo = AwaitResponseWrapper(async_send_sysinfo)
+
 
 class ThreadedHyperionClient(threading.Thread):
     """Hyperion Client that runs in a dedicated thread."""
