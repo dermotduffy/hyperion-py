@@ -177,10 +177,10 @@ class HyperionClient:
                 future_streams, timeout=self._timeout_secs
             )
         except (asyncio.TimeoutError, ConnectionError, OSError) as exc:
-            _LOGGER.debug("Could not connect to (%s): %s", self.id, repr(exc))
+            _LOGGER.debug("Could not connect to (%s): %s", self._host_port, repr(exc))
             return False
 
-        _LOGGER.info("Connected to Hyperion server: %s", self.id)
+        _LOGGER.info("Connected to Hyperion server: %s", self._host_port)
 
         # Start the receive task to process inbound data from the server.
         await self._await_or_stop_task(self._receive_task, stop_task=True)
@@ -275,7 +275,7 @@ class HyperionClient:
         except ConnectionError as exc:
             _LOGGER.warning(
                 "Could not close connection cleanly for Hyperion (%s): %s",
-                self.id,
+                self._host_port,
                 repr(exc),
             )
             error = True
@@ -296,7 +296,7 @@ class HyperionClient:
         if not self._writer:
             return False
 
-        _LOGGER.debug("Send to server (%s): %s", self.id, request)
+        _LOGGER.debug("Send to server (%s): %s", self._host_port, request)
         output = json.dumps(request, sort_keys=True).encode("UTF-8") + b"\n"
         try:
             self._writer.write(output)
@@ -304,7 +304,7 @@ class HyperionClient:
         except ConnectionError as exc:
             _LOGGER.warning(
                 "Could not write data for Hyperion (%s): %s",
-                self.id,
+                self._host_port,
                 repr(exc),
             )
             return False
@@ -323,12 +323,12 @@ class HyperionClient:
             future_resp = self._reader.readline()
             resp = await asyncio.wait_for(future_resp, timeout=timeout_secs)
         except ConnectionError:
-            _LOGGER.warning("Connection to Hyperion lost (%s) ...", self.id)
+            _LOGGER.warning("Connection to Hyperion lost (%s) ...", self._host_port)
             await self._async_client_disconnect_internal()
             return None
         except asyncio.TimeoutError:
             _LOGGER.warning(
-                "Read from Hyperion timed out (%s), disconnecting ...", self.id
+                "Read from Hyperion timed out (%s), disconnecting ...", self._host_port
             )
             await self._async_client_disconnect_internal()
             return None
@@ -337,18 +337,18 @@ class HyperionClient:
             # If there's no writer, we have disconnected, so skip the error message
             # and additional disconnect call.
             if self._writer:
-                _LOGGER.warning("Connection to Hyperion lost (%s) ...", self.id)
+                _LOGGER.warning("Connection to Hyperion lost (%s) ...", self._host_port)
                 await self._async_client_disconnect_internal()
             return None
 
-        _LOGGER.debug("Read from server (%s): %s", self.id, resp)
+        _LOGGER.debug("Read from server (%s): %s", self._host_port, resp)
 
         try:
             resp_json = json.loads(resp)
         except json.decoder.JSONDecodeError:
             _LOGGER.warning(
                 "Could not decode JSON from Hyperion (%s), skipping...",
-                self.id,
+                self._host_port,
             )
             return None
 
@@ -356,7 +356,7 @@ class HyperionClient:
             _LOGGER.warning(
                 "JSON from Hyperion (%s) did not include expected '%s' "
                 "parameter, skipping...",
-                self.id,
+                self._host_port,
                 const.KEY_COMMAND,
             )
             return None
@@ -371,7 +371,7 @@ class HyperionClient:
                         _LOGGER.info(
                             "Could not estalish valid connection to Hyperion (%s), "
                             "retrying in %i seconds...",
-                            self.id,
+                            self._host_port,
                             self._retry_secs,
                         )
                         await self._async_client_disconnect_internal()
@@ -394,7 +394,8 @@ class HyperionClient:
             # Make sure exceptions are logged (for testing purposes, as this is
             # in a background task).
             _LOGGER.exception(
-                "Exception in Hyperion (%s) background maintenance task", self.id
+                "Exception in Hyperion (%s) background maintenance task",
+                self._host_port,
             )
             raise
 
@@ -453,11 +454,13 @@ class HyperionClient:
                 _LOGGER.warning(
                     "Authorization failed for Hyperion (%s). "
                     "Check token is valid: %s",
-                    self.id,
+                    self._host_port,
                     resp_json,
                 )
             else:
-                _LOGGER.warning("Failed Hyperion (%s) command: %s", self.id, resp_json)
+                _LOGGER.warning(
+                    "Failed Hyperion (%s) command: %s", self._host_port, resp_json
+                )
         elif (
             command == f"{const.KEY_COMPONENTS}-{const.KEY_UPDATE}"
             and const.KEY_DATA in resp_json
@@ -575,11 +578,12 @@ class HyperionClient:
             self._default_callback(json)
 
     @property
-    def id(self) -> str:
-        """Return an ID representing this Hyperion client."""
-        return "%s:%i-%i" % (self._host, self._port, self._target_instance)
+    def _host_port(self):
+        """Return a host:port string for this server."""
+        return "%s:%i" % (self._host, self._port)
 
     def _set_data(self, data: Dict, hard: Dict = None, soft: Dict = None) -> Dict:
+        """Override the data in the dictionary selectively."""
         output = soft or {}
         output.update(data)
         output.update(hard or {})
@@ -598,7 +602,7 @@ class HyperionClient:
             if tan in self._tan_responses:
                 raise HyperionClientTanNotAvailable(
                     "Requested tan '%i' is not available in Hyperion client (%s)"
-                    % (tan, self.id)
+                    % (tan, self._host_port)
                 )
             self._tan_responses[tan] = None
             return tan
@@ -1277,6 +1281,22 @@ class HyperionClient:
         return await self._async_send_json(data)
 
     async_sysinfo = AwaitResponseWrapper(async_send_sysinfo)
+
+    async def async_id(self, include_instance=False) -> Optional[str]:
+        """Return an ID representing this Hyperion server."""
+        sysinfo = await self.async_sysinfo()
+        if ResponseOK(sysinfo):
+            sysinfo_id = (
+                sysinfo.get(const.KEY_INFO, {})
+                .get(const.KEY_HYPERION, {})
+                .get(const.KEY_ID, None)
+            )
+            if not sysinfo_id:
+                return None
+            if include_instance:
+                return "%s-%i" % (sysinfo_id, self._target_instance)
+            return sysinfo_id
+        return None
 
 
 class ThreadedHyperionClient(threading.Thread):

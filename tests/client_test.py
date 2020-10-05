@@ -40,6 +40,32 @@ SERVERINFO_REQUEST = {
     "tan": 1,
 }
 
+TEST_SYSINFO_ID = "f9aab089-f85a-55cf-b7c1-222a72faebe9"
+TEST_SYSINFO_RESPONSE = {
+    "command": "sysinfo",
+    "info": {
+        "hyperion": {
+            "build": "fix-request-tan (GitHub-78458e44/5d5b2497-1601058791)",
+            "gitremote": "https://github.com/hyperion-project/hyperion.ng.git",
+            "id": TEST_SYSINFO_ID,
+            "time": "Sep 29 2020 12:33:00",
+            "version": "2.0.0-alpha.8",
+        },
+        "system": {
+            "architecture": "arm",
+            "domainName": "domain",
+            "hostName": "hyperion",
+            "kernelType": "linux",
+            "kernelVersion": "5.4.51-v7l+",
+            "prettyName": "Raspbian GNU/Linux 10 (buster)",
+            "productType": "raspbian",
+            "productVersion": "10",
+            "wordSize": "32",
+        },
+    },
+    "success": True,
+}
+
 
 class MockStreamReaderWriter:
     """A simple mocl StreamReader and StreamWriter."""
@@ -1468,13 +1494,6 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
             self.assertTrue(await hc.async_client_disconnect())
             await rw.assert_flow_finished()
 
-    async def test_client_id(self):
-        """Verify sending data does not throw exceptions."""
-
-        (rw, hc) = await self._create_and_test_basic_connected_client()
-        self.assertTrue(hc.id, "%s:%i-%i" % (TEST_HOST, TEST_PORT, TEST_INSTANCE))
-        await self._disconnect_and_assert_finished(rw, hc)
-
     async def test_client_timeout(self):
         """Verify connection and read timeouts behave correctly."""
 
@@ -1685,34 +1704,35 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         sysinfo_in = {"command": "sysinfo", "tan": 2}
         sysinfo_out = {
-            "command": "sysinfo",
-            "info": {
-                "hyperion": {
-                    "build": "fix-request-tan (GitHub-78458e44/5d5b2497-1601058791)",
-                    "gitremote": "https://github.com/hyperion-project/hyperion.ng.git",
-                    "id": "f9aab089-f85a-55cf-b7c1-222a72faebe9",
-                    "time": "Sep 29 2020 12:33:00",
-                    "version": "2.0.0-alpha.8",
-                },
-                "system": {
-                    "architecture": "arm",
-                    "domainName": "domain",
-                    "hostName": "hyperion",
-                    "kernelType": "linux",
-                    "kernelVersion": "5.4.51-v7l+",
-                    "prettyName": "Raspbian GNU/Linux 10 (buster)",
-                    "productType": "raspbian",
-                    "productVersion": "10",
-                    "wordSize": "32",
-                },
-            },
-            "success": True,
+            **TEST_SYSINFO_RESPONSE,
             "tan": 2,
         }
 
         await rw.add_flow([("write", sysinfo_in), ("read", sysinfo_out)])
         sysinfo = await hc.async_sysinfo()
         self.assertEqual(sysinfo_out, sysinfo)
+        await self._disconnect_and_assert_finished(rw, hc)
+
+    async def test_get_id(self):
+        """Verify fetching the client id."""
+        (rw, hc) = await self._create_and_test_basic_connected_client()
+
+        sysinfo_in = {"command": "sysinfo", "tan": 2}
+        sysinfo_out = {
+            **TEST_SYSINFO_RESPONSE,
+            "tan": 2,
+        }
+
+        await rw.add_flow([("write", sysinfo_in), ("read", sysinfo_out)])
+        self.assertEqual(TEST_SYSINFO_ID, await hc.async_id())
+
+        await rw.add_flow(
+            [("write", {**sysinfo_in, "tan": 3}), ("read", {**sysinfo_out, "tan": 3})]
+        )
+        self.assertEqual(
+            "%s-%i" % (TEST_SYSINFO_ID, const.DEFAULT_INSTANCE),
+            await hc.async_id(include_instance=True),
+        )
         await self._disconnect_and_assert_finished(rw, hc)
 
 
