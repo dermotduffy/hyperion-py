@@ -206,17 +206,20 @@ class HyperionClient:
                 not self._client_state.get(const.KEY_LOGGED_IN)
                 and not await self._async_client_login()
             ):
+                await self.async_client_disconnect()
                 return False
 
             if (
                 not self._client_state.get(const.KEY_INSTANCE)
                 and not await self._async_client_select_instance()
             ):
+                await self.async_client_disconnect()
                 return False
 
             if not self._client_state.get(
                 const.KEY_LOADED_STATE
             ) and not ServerInfoResponseOK(await self.async_get_serverinfo()):
+                await self.async_client_disconnect()
                 return False
 
         # Start the maintenance task if it does not already exist.

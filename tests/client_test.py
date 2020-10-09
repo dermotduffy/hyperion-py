@@ -356,6 +356,78 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         self.assertTrue(hc.is_connected)
         await self._disconnect_and_assert_finished(rw, hc)
 
+    async def test_async_client_connect_failure(self):
+        """Test failed connection to server."""
+
+        authorize_request = {
+            "command": "authorize",
+            "subcommand": "login",
+            "token": TEST_TOKEN,
+        }
+        authorize_response = {"command": "authorize-login", "success": False}
+
+        rw = MockStreamReaderWriter(
+            [
+                ("write", {**authorize_request, **{"tan": 1}}),
+                ("read", {**authorize_response, **{"tan": 1}}),
+                ("close", None),
+            ]
+        )
+
+        # == Try to connect when the token fails.
+        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+            hc = client.HyperionClient(TEST_HOST, TEST_PORT, token=TEST_TOKEN)
+            self.assertFalse(await hc.async_client_connect())
+            self.assertFalse(hc.is_connected)
+            await rw.assert_flow_finished()
+
+        instance_request = {
+            "command": "instance",
+            "instance": TEST_INSTANCE,
+            "subcommand": "switchTo",
+        }
+        instance_response = {
+            "command": "instance-switchTo",
+            "success": False,
+            "info": {"instance": TEST_INSTANCE},
+        }
+
+        rw = MockStreamReaderWriter(
+            [
+                ("write", {**instance_request, **{"tan": 1}}),
+                ("read", {**instance_response, **{"tan": 1}}),
+                ("close", None),
+            ]
+        )
+
+        # == Try to connect when the instance selection fails.
+        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+            hc = client.HyperionClient(TEST_HOST, TEST_PORT, instance=TEST_INSTANCE)
+            self.assertFalse(await hc.async_client_connect())
+            self.assertFalse(hc.is_connected)
+            await rw.assert_flow_finished()
+
+        rw = MockStreamReaderWriter(
+            [
+                ("write", {**SERVERINFO_REQUEST, **{"tan": 1}}),
+                (
+                    "read",
+                    {
+                        **self._read_file(FILE_SERVERINFO_RESPONSE),
+                        **{"tan": 1, "success": False},
+                    },
+                ),
+                ("close", None),
+            ]
+        )
+
+        # == Try to connect when the serverinfo (state load) call fails.
+        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+            hc = client.HyperionClient(TEST_HOST, TEST_PORT)
+            self.assertFalse(await hc.async_client_connect())
+            self.assertFalse(hc.is_connected)
+            await rw.assert_flow_finished()
+
     async def test_async_client_connect_authorized(self):
         """Test server connection with authorization."""
 
