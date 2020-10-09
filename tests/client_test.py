@@ -1735,6 +1735,24 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         )
         await self._disconnect_and_assert_finished(rw, hc)
 
+    async def test_context_manager(self):
+        """Test the context manager functionality."""
+        rw = MockStreamReaderWriter(
+            [
+                ("write", {**SERVERINFO_REQUEST, **{"tan": 1}}),
+                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 1}}),
+            ]
+        )
+
+        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+            async with client.HyperionClient(TEST_HOST, TEST_PORT) as hc:
+                self.assertTrue(hc.is_connected)
+                await rw.assert_flow_finished()
+                await rw.add_flow([("close", None)])
+            await self._block_until_done(rw)
+            await rw.assert_flow_finished()
+            self.assertFalse(hc.is_connected)
+
 
 class ResponseTestCase(unittest.TestCase):
     """Test case for the Hyperion Client Response object."""

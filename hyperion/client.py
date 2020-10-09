@@ -116,6 +116,15 @@ class HyperionClient:
             }
         )
 
+    async def __aenter__(self, *args, **kwargs) -> Optional["HyperionClient"]:
+        """Enter context manager and connect the client."""
+        result = await self.async_client_connect(*args, **kwargs)
+        return self if result else None
+
+    async def __aexit__(self, exc_type, exc, tb):
+        """Leave context manager and disconnect the client."""
+        await self.async_client_disconnect()
+
     async def _client_state_reset(self) -> None:
         self._client_state.update(
             {
