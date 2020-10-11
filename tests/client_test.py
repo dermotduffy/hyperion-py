@@ -1273,6 +1273,18 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         await self._block_until_done(rw)
         self.assertIsNone(received_default_json)
 
+        awaitable_json = None
+
+        async def awaitable_callback(json):
+            nonlocal awaitable_json
+            awaitable_json = json
+
+        # Verify async awaitables.
+        hc.set_callbacks({random_update_value: awaitable_callback})
+        await rw.add_flow([("read", random_update)])
+        await self._block_until_done(rw)
+        self.assertEqual(awaitable_json, random_update)
+
         # Verify disconnection callback.
         hc.set_callbacks({"client-update": client_callback})
         await self._disconnect_and_assert_finished(rw, hc)
@@ -1744,18 +1756,11 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         """Test the behavior of a double connect call."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
-        await rw.add_flow(
-            [
-                ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
-                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}}),
-            ]
-        )
-
         with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
             self.assertTrue(await hc.async_client_connect())
             self.assertTrue(hc.is_connected)
 
-        await rw.assert_flow_finished()
+        await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_double_disconnect(self):
         """Test the behavior of a double disconnect call."""

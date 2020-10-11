@@ -180,6 +180,9 @@ class HyperionClient:
     async def async_client_connect(self, raw=False) -> bool:
         """Connect to the Hyperion server."""
 
+        if self._writer:
+            return True
+
         future_streams = asyncio.open_connection(self._host, self._port)
         try:
             self._reader, self._writer = await asyncio.wait_for(
@@ -199,7 +202,7 @@ class HyperionClient:
         self._client_state.update(
             {const.KEY_CONNECTED: True, const.KEY_INSTANCE: const.DEFAULT_INSTANCE}
         )
-        self._call_client_state_callback_if_necessary()
+        await self._call_client_state_callback_if_necessary()
 
         if not raw:
             if (
@@ -228,7 +231,7 @@ class HyperionClient:
 
         return True
 
-    def _call_client_state_callback_if_necessary(self):
+    async def _call_client_state_callback_if_necessary(self):
         """Call the client state callbacks if state has changed."""
         if not self._client_state.dirty:
             return
@@ -238,14 +241,14 @@ class HyperionClient:
                 const.KEY_COMMAND: f"{const.KEY_CLIENT}-{const.KEY_UPDATE}",
             },
         )
-        self._call_callbacks(str(data[const.KEY_COMMAND]), data)
+        await self._call_callbacks(str(data[const.KEY_COMMAND]), data)
         self._client_state.dirty = False
 
     async def _async_client_login(self) -> bool:
         """Log the client in if a token is provided."""
         if self._token is None:
             self._client_state.set(const.KEY_LOGGED_IN, True)
-            self._call_client_state_callback_if_necessary()
+            await self._call_client_state_callback_if_necessary()
             return True
         return bool(LoginResponseOK(await self.async_login(token=self._token)))
 
@@ -256,7 +259,7 @@ class HyperionClient:
             and self._target_instance == const.DEFAULT_INSTANCE
         ) or self._client_state.get(const.KEY_INSTANCE) == self._target_instance:
             self._client_state.set(const.KEY_INSTANCE, self._target_instance)
-            self._call_client_state_callback_if_necessary()
+            await self._call_client_state_callback_if_necessary()
             return True
 
         resp_json = await self.async_switch_instance(instance=self._target_instance)
@@ -293,7 +296,7 @@ class HyperionClient:
             error = True
 
         await self._client_state_reset()
-        self._call_client_state_callback_if_necessary()
+        await self._call_client_state_callback_if_necessary()
 
         # Tell the maintenance loop it may need to reconnect.
         self._maintenance_event.set()
@@ -446,7 +449,7 @@ class HyperionClient:
             {const.KEY_INSTANCE: instance, const.KEY_LOADED_STATE: False}
         )
         self._update_serverinfo(None)
-        self._call_client_state_callback_if_necessary()
+        await self._call_client_state_callback_if_necessary()
 
         # Wake the maintenance task to load the state (this is called from the
         # receive loop, so it cannot be loaded from here).
@@ -555,8 +558,8 @@ class HyperionClient:
         elif LoginResponseOK(resp_json):
             self._client_state.set(const.KEY_LOGGED_IN, True)
 
-        self._call_callbacks(command, resp_json)
-        self._call_client_state_callback_if_necessary()
+        await self._call_callbacks(command, resp_json)
+        await self._call_client_state_callback_if_necessary()
         await self._handle_response_for_caller(command, resp_json)
         return True
 
@@ -582,12 +585,14 @@ class HyperionClient:
     # || Helper calls ||
     # ==================
 
-    def _call_callbacks(self, command: str, json: Dict) -> None:
+    async def _call_callbacks(self, command: str, json: Dict) -> None:
         """Call the relevant callbacks for the given command."""
-        if command in self._callbacks:
-            self._callbacks[command](json)
-        elif self._default_callback is not None:
-            self._default_callback(json)
+        callback = self._callbacks.get(command, self._default_callback)
+        if callback:
+            if inspect.iscoroutinefunction(callback):
+                await callback(json)
+            else:
+                callback(json)
 
     @property
     def _host_port(self):
