@@ -1803,13 +1803,6 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         await rw.add_flow([("write", sysinfo_in), ("read", sysinfo_out)])
         self.assertEqual(TEST_SYSINFO_ID, await hc.async_id())
 
-        await rw.add_flow(
-            [("write", {**sysinfo_in, "tan": 3}), ("read", {**sysinfo_out, "tan": 3})]
-        )
-        self.assertEqual(
-            "%s-%i" % (TEST_SYSINFO_ID, const.DEFAULT_INSTANCE),
-            await hc.async_id(include_instance=True),
-        )
         await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_context_manager(self):

@@ -1299,7 +1299,7 @@ class HyperionClient:
 
     async_sysinfo = AwaitResponseWrapper(async_send_sysinfo)
 
-    async def async_id(self, include_instance=False) -> Optional[str]:
+    async def async_id(self) -> Optional[str]:
         """Return an ID representing this Hyperion server."""
         sysinfo = await self.async_sysinfo()
         if ResponseOK(sysinfo):
@@ -1310,8 +1310,6 @@ class HyperionClient:
             )
             if not sysinfo_id:
                 return None
-            if include_instance:
-                return "%s-%i" % (sysinfo_id, self._target_instance)
             return sysinfo_id
         return None
 
