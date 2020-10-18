@@ -78,6 +78,7 @@ class HyperionClient:
         origin: str = const.DEFAULT_ORIGIN,
         timeout_secs: float = const.DEFAULT_TIMEOUT_SECS,
         retry_secs=const.DEFAULT_CONNECTION_RETRY_DELAY_SECS,
+        raw_connection=False,
     ) -> None:
         """Initialize client."""
         _LOGGER.debug("HyperionClient initiated with: (%s:%i)", host, port)
@@ -92,6 +93,7 @@ class HyperionClient:
         self._origin = origin
         self._timeout_secs = timeout_secs
         self._retry_secs = retry_secs
+        self._raw_connection = raw_connection
 
         self._serverinfo: Optional[Dict] = None
 
@@ -116,9 +118,9 @@ class HyperionClient:
             }
         )
 
-    async def __aenter__(self, *args, **kwargs) -> Optional["HyperionClient"]:
+    async def __aenter__(self) -> Optional["HyperionClient"]:
         """Enter context manager and connect the client."""
-        result = await self.async_client_connect(*args, **kwargs)
+        result = await self.async_client_connect()
         return self if result else None
 
     async def __aexit__(self, exc_type, exc, tb):
@@ -177,7 +179,7 @@ class HyperionClient:
         """Return client state."""
         return self._client_state.get_all()
 
-    async def async_client_connect(self, raw=False) -> bool:
+    async def async_client_connect(self) -> bool:
         """Connect to the Hyperion server."""
 
         if self._writer:
@@ -204,7 +206,7 @@ class HyperionClient:
         )
         await self._call_client_state_callback_if_necessary()
 
-        if not raw:
+        if not self._raw_connection:
             if (
                 not self._client_state.get(const.KEY_LOGGED_IN)
                 and not await self._async_client_login()

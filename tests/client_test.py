@@ -490,9 +490,13 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
             hc = client.HyperionClient(
-                TEST_HOST, TEST_PORT, instance=TEST_INSTANCE, token=TEST_TOKEN
+                TEST_HOST,
+                TEST_PORT,
+                instance=TEST_INSTANCE,
+                token=TEST_TOKEN,
+                raw_connection=True,
             )
-            self.assertTrue(await hc.async_client_connect(raw=True))
+            self.assertTrue(await hc.async_client_connect())
 
         # It's a raw connection, it will not be logged in, nor instance selected.
         self.assertTrue(hc.is_connected)
