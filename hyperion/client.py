@@ -1288,7 +1288,7 @@ class HyperionClient:
 
     # ==================================================================================
     # ** Sysinfo **
-    # ** Undocumented **
+    # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#system-hyperion
     # Returns system information from the Hyperion instance.
     # ==================================================================================
 
