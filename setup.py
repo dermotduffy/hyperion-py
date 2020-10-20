@@ -7,7 +7,7 @@ with open("README.md") as fh:
 
 setuptools.setup(
     name="hyperion-py",
-    version="0.3.0",
+    version="0.4.0",
     author="Dermot Duffy",
     author_email="dermot.duffy@gmail.com",
     description="Hyperion Ambient Lighting Python Package",
@@ -22,6 +22,7 @@ setuptools.setup(
         "Intended Audience :: Developers",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
         "Topic :: Home Automation",
