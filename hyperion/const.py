@@ -2,6 +2,7 @@
 """Hyperion Constants."""
 
 KEY_ACCEPT = "accept"
+KEY_ACTIVE = "active"
 KEY_ADJUSTMENT = "adjustment"
 KEY_AUTHORIZE = "authorize"
 KEY_AUTHORIZE_LOGIN = "authorize-login"
