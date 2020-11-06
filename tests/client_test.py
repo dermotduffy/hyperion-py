@@ -1,8 +1,8 @@
 #!/usr/bin/python
 """Test for the Hyperion Client."""
 
-import asynctest
-from asynctest import helpers
+from asynctest import helpers, ClockedTestCase
+from asynctest.mock import patch
 import asyncio
 import inspect
 import json
@@ -11,6 +11,7 @@ import unittest
 from hyperion import client, const
 import logging
 import string
+from typing import cast, Any, Dict, List, Optional, Tuple
 
 logging.basicConfig()
 _LOGGER = logging.getLogger(__name__)
@@ -70,62 +71,62 @@ TEST_SYSINFO_RESPONSE = {
 class MockStreamReaderWriter:
     """A simple mocl StreamReader and StreamWriter."""
 
-    def __init__(self, flow=[]):
+    def __init__(self, flow: Optional[List[Tuple[str, Any]]] = None) -> None:
         """Initializse the mock."""
-        self._flow = flow
+        self._flow = flow or []
         self._read_cv = asyncio.Condition()
         self._write_cv = asyncio.Condition()
         self._flow_cv = asyncio.Condition()
-        self._data_to_drain = None
+        self._data_to_drain: Optional[bytes] = None
 
-    async def add_flow(self, flow):
+    async def add_flow(self, flow: List[Tuple[str, Any]]) -> None:
         """Add expected calls to the flow."""
         async with self._flow_cv:
             self._flow.extend(flow)
         await self.unblock_read()
         await self.unblock_write()
 
-    async def unblock_read(self):
+    async def unblock_read(self) -> None:
         """Unblock the read call."""
         async with self._read_cv:
             self._read_cv.notify_all()
 
-    async def unblock_write(self):
+    async def unblock_write(self) -> None:
         """Unblock the write call."""
         async with self._write_cv:
             self._write_cv.notify_all()
 
-    async def block_read(self):
+    async def block_read(self) -> None:
         """Block the read call."""
         async with self._read_cv:
             await self._read_cv.wait()
 
-    async def block_write(self):
+    async def block_write(self) -> None:
         """Block the write call."""
         async with self._write_cv:
             await self._write_cv.wait()
 
-    async def block_until_flow_empty(self):
+    async def block_until_flow_empty(self) -> None:
         """Block until the flow has been consumed."""
         async with self._flow_cv:
             await self._flow_cv.wait_for(lambda: not self._flow)
 
-    async def assert_flow_finished(self):
+    async def assert_flow_finished(self) -> None:
         """Assert that the flow has been consumed."""
         async with self._flow_cv:
             assert not self._flow
 
-    def _get_test_filepath(self, filename):
+    def _get_test_filepath(self, filename: str) -> str:
         return os.path.join(PATH_TESTDATA, filename)
 
-    def _to_json_line(self, data):
+    def _to_json_line(self, data: Any) -> bytes:
         """Convert data to an encoded JSON string."""
         if type(data) == str:
-            return data.encode("UTF-8")
+            return cast(bytes, data.encode("UTF-8"))
         else:
             return (json.dumps(data, sort_keys=True) + "\n").encode("UTF-8")
 
-    async def _pop_flow(self):
+    async def _pop_flow(self) -> Tuple[str, Any]:
         """Remove an item from the front of the flow and notify."""
         async with self._flow_cv:
             if not self._flow:
@@ -135,11 +136,11 @@ class MockStreamReaderWriter:
             self._flow_cv.notify_all()
             return item
 
-    def _is_exception(self, data):
+    def _is_exception(self, data: Any) -> bool:
         """Determine if a data element is an Exception object."""
         return isinstance(data, Exception)
 
-    async def readline(self):
+    async def readline(self) -> bytes:
         """Read a line from the mock.
 
         Will block indefinitely if no read call is available.
@@ -168,10 +169,10 @@ class MockStreamReaderWriter:
                 raise data
             return self._to_json_line(data)
 
-    def close(self):
+    def close(self) -> None:
         """Close the mock."""
 
-    async def wait_closed(self):
+    async def wait_closed(self) -> None:
         """Wait for the close to complete."""
         _LOGGER.debug("MockStreamReaderWriter: wait_closed()")
 
@@ -181,13 +182,13 @@ class MockStreamReaderWriter:
         if self._is_exception(data):
             raise data
 
-    def write(self, data_in):
+    def write(self, data_in: bytes) -> None:
         """Write data to the mock."""
         _LOGGER.debug("MockStreamReaderWriter: write(%s)", data_in)
         assert self._data_to_drain is None
         self._data_to_drain = data_in
 
-    async def drain(self):
+    async def drain(self) -> None:
         """Drain the most recent write to the mock.
 
         Will block if the next write in the flow (not necessarily the next call in
@@ -199,9 +200,9 @@ class MockStreamReaderWriter:
             assert self._data_to_drain is not None
 
             async with self._flow_cv:
-                assert len(self._flow) > 0, (
-                    "drain() called unexpectedly: %s" % self._data_to_drain
-                )
+                assert (
+                    len(self._flow) > 0
+                ), f"drain() called unexpectedly: {self._data_to_drain!r}"
                 cmd, data = self._flow[0]
 
             should_block = False
@@ -214,8 +215,8 @@ class MockStreamReaderWriter:
                             break
                     else:
                         raise AssertionError(
-                            'Unexpected call to drain with data "%s", expected '
-                            '"%s" with data "%s"' % (self._data_to_drain, cmd, data)
+                            f'Unexpected call to drain with data "{self._data_to_drain!r}", expected '
+                            '"{cmd}" with data "{data!r}"'
                         )
 
             if should_block:
@@ -246,78 +247,29 @@ class MockStreamReaderWriter:
             break
 
 
-class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
+# Typing: asynctest does not expose type hints.
+class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
     """Test case for the Hyperion Client."""
 
-    def _create_mock_reader(self, reads=None, filenames=None):
-        reader = asynctest.mock.Mock(asyncio.StreamReader)
-        if reads:
-            self._add_expected_reads(reader, reads)
-        if filenames:
-            self._add_expected_reads_from_files(reader, filenames)
-        return reader
-
-    def _read_file(self, filename):
+    def _read_file(self, filename: str) -> Any:
         with open(self._get_test_filepath(filename)) as fh:
             data = fh.read()
         return json.loads(data)
 
-    def _create_mock_writer(self):
-        return asynctest.mock.Mock(asyncio.StreamWriter)
-
-    def _add_expected_reads(self, reader, reads):
-        side_effect = reader.readline.side_effect or []
-        reader.readline.side_effect = [v for v in side_effect] + reads
-
-    def _add_expected_reads_from_files(self, reader, filenames):
-        reads = []
-        for filename in filenames:
-            with open(self._get_test_filepath(filename)) as fh:
-                reads.extend(fh.readlines())
-        self._add_expected_reads(reader, reads)
-
-    def _get_test_filepath(self, filename):
+    def _get_test_filepath(self, filename: str) -> str:
         return os.path.join(PATH_TESTDATA, filename)
 
-    def _verify_expected_writes(self, writer, writes=[], filenames=[]):
-        for filename in filenames:
-            with open(os.path.join(PATH_TESTDATA, filename)) as fh:
-                writes.extend([line.encode("UTF-8") for line in fh.readlines()])
-
-        call_index = 0
-        while call_index < len(writer.method_calls) and int(call_index / 2) < len(
-            writes
-        ):
-            self.assertEqual(
-                writer.method_calls[call_index],
-                unittest.mock.call.write(writes[int(call_index / 2)]),
-            )
-            self.assertEqual(
-                writer.method_calls[call_index + 1], unittest.mock.call.drain
-            )
-            call_index += 2
-        self.assertEqual(
-            len(writer.method_calls) / 2,
-            len(writes),
-            msg="Incorrect number of write calls",
-        )
-        writer.reset_mock()
-
-    def _verify_reader(self, reader):
-        # The prepared responses should have been exhausted
-        with self.assertRaises(StopIteration):
-            reader.readline()
-
-    def setUp(self):
+    def setUp(self) -> None:
         """Set up testcase."""
         self.loop.set_debug(enabled=True)
         client._LOGGER.setLevel(logging.DEBUG)
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         """Tear down testcase."""
-        pass
 
-    async def _create_and_test_basic_connected_client(self, **kwargs):
+    async def _create_and_test_basic_connected_client(
+        self, **kwargs: Any
+    ) -> Tuple[MockStreamReaderWriter, client.HyperionClient]:
         """Create a basic connected client object."""
         rw = MockStreamReaderWriter(
             [
@@ -326,37 +278,37 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
             ]
         )
 
-        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+        with patch("asyncio.open_connection", return_value=(rw, rw)):
             hc = client.HyperionClient(TEST_HOST, TEST_PORT, **kwargs)
             self.assertTrue(await hc.async_client_connect())
 
         await rw.assert_flow_finished()
         return (rw, hc)
 
-    def _to_json_line(self, data):
-        """Convert data to an encoded JSON string."""
-        return (json.dumps(data, sort_keys=True) + "\n").encode("UTF-8")
-
-    async def _block_until_done(self, rw, additional_wait_secs=None):
+    async def _block_until_done(
+        self, rw: MockStreamReaderWriter, additional_wait_secs: Optional[float] = None
+    ) -> None:
         if additional_wait_secs:
             await self.advance(additional_wait_secs)
         await rw.block_until_flow_empty()
         await helpers.exhaust_callbacks(self.loop)
 
-    async def _disconnect_and_assert_finished(self, rw, hc):
+    async def _disconnect_and_assert_finished(
+        self, rw: MockStreamReaderWriter, hc: client.HyperionClient
+    ) -> None:
         await rw.add_flow([("close", None)])
         self.assertTrue(await hc.async_client_disconnect())
         await self._block_until_done(rw)
         self.assertFalse(hc.is_connected)
         await rw.assert_flow_finished()
 
-    async def test_async_client_connect(self):
+    async def test_async_client_connect(self) -> None:
         """Test async connection to server."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         self.assertTrue(hc.is_connected)
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_client_connect_failure(self):
+    async def test_async_client_connect_failure(self) -> None:
         """Test failed connection to server."""
 
         authorize_request = {
@@ -375,7 +327,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         )
 
         # == Try to connect when the token fails.
-        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+        with patch("asyncio.open_connection", return_value=(rw, rw)):
             hc = client.HyperionClient(TEST_HOST, TEST_PORT, token=TEST_TOKEN)
             self.assertFalse(await hc.async_client_connect())
             self.assertFalse(hc.is_connected)
@@ -401,7 +353,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         )
 
         # == Try to connect when the instance selection fails.
-        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+        with patch("asyncio.open_connection", return_value=(rw, rw)):
             hc = client.HyperionClient(TEST_HOST, TEST_PORT, instance=TEST_INSTANCE)
             self.assertFalse(await hc.async_client_connect())
             self.assertFalse(hc.is_connected)
@@ -422,13 +374,13 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         )
 
         # == Try to connect when the serverinfo (state load) call fails.
-        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+        with patch("asyncio.open_connection", return_value=(rw, rw)):
             hc = client.HyperionClient(TEST_HOST, TEST_PORT)
             self.assertFalse(await hc.async_client_connect())
             self.assertFalse(hc.is_connected)
             await rw.assert_flow_finished()
 
-    async def test_async_client_connect_authorized(self):
+    async def test_async_client_connect_authorized(self) -> None:
         """Test server connection with authorization."""
 
         authorize_request = {
@@ -447,7 +399,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
             ]
         )
 
-        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+        with patch("asyncio.open_connection", return_value=(rw, rw)):
             hc = client.HyperionClient(TEST_HOST, TEST_PORT, token=TEST_TOKEN)
             self.assertTrue(await hc.async_client_connect())
             self.assertTrue(hc.has_loaded_state)
@@ -455,7 +407,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_client_connect_specified_instance(self):
+    async def test_async_client_connect_specified_instance(self) -> None:
         """Test server connection to specified instance."""
         instance_request = {
             "command": "instance",
@@ -477,18 +429,18 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
             ]
         )
 
-        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+        with patch("asyncio.open_connection", return_value=(rw, rw)):
             hc = client.HyperionClient(TEST_HOST, TEST_PORT, instance=TEST_INSTANCE)
             self.assertTrue(await hc.async_client_connect())
 
         self.assertEqual(hc.instance, TEST_INSTANCE)
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_client_connect_raw(self):
+    async def test_async_client_connect_raw(self) -> None:
         """Test a raw connection."""
         rw = MockStreamReaderWriter()
 
-        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+        with patch("asyncio.open_connection", return_value=(rw, rw)):
             hc = client.HyperionClient(
                 TEST_HOST,
                 TEST_PORT,
@@ -506,7 +458,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_instance_switch_causes_refresh(self):
+    async def test_instance_switch_causes_refresh(self) -> None:
         """Test that an instance switch causes a full refresh."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
@@ -541,7 +493,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
     async def test_instance_switch_causes_disconnect_and_reconnect_if_refresh_fails(
         self,
-    ):
+    ) -> None:
         """Test that an instance must get a full refresh or it will disconnect."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
@@ -560,7 +512,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
             "instance": instance,
         }
 
-        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+        with patch("asyncio.open_connection", return_value=(rw, rw)):
             await rw.add_flow(
                 [
                     ("read", instance_switch_response),
@@ -596,7 +548,31 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         self.assertEqual(hc.instance, None)
         self.assertEqual(hc.target_instance, instance)
 
-    async def test_is_on(self):
+    async def test_receive_wrong_data_type(self) -> None:
+        """Test that receiving the wrong data-type is handled."""
+        rw = MockStreamReaderWriter(
+            [
+                ("write", {**SERVERINFO_REQUEST, **{"tan": 1}}),
+            ]
+        )
+        with patch("asyncio.open_connection", return_value=(rw, rw)):
+            hc = client.HyperionClient(TEST_HOST, TEST_PORT, raw_connection=True)
+            self.assertTrue(await hc.async_client_connect())
+
+            task = asyncio.create_task(hc.async_get_serverinfo())
+            await rw.block_until_flow_empty()
+            await rw.add_flow(
+                [
+                    ("read", ["this", "is", "not", "a", "dict"]),
+                ]
+            )
+
+            # Advance the clock so it times out waiting.
+            await self.advance(const.DEFAULT_TIMEOUT_SECS * 2)
+            self.assertFalse(await task)
+            await self._disconnect_and_assert_finished(rw, hc)
+
+    async def test_is_on(self) -> None:
         """Test the client reports correctly on whether components are on."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
@@ -641,7 +617,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         self.assertTrue(hc.is_on())
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_update_component(self):
+    async def test_update_component(self) -> None:
         """Test updating components."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
@@ -674,14 +650,14 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_update_adjustment(self):
+    async def test_update_adjustment(self) -> None:
         """Test updating adjustments."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         adjustment_update = {
             "command": "adjustment-update",
             "data": [{"brightness": 25}],
         }
-
+        assert hc.adjustment
         self.assertEqual(hc.adjustment[0]["brightness"], 83)
 
         await rw.add_flow([("read", adjustment_update)])
@@ -691,7 +667,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_update_effect_list(self):
+    async def test_update_effect_list(self) -> None:
         """Test updating effect list."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
@@ -715,12 +691,13 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         await rw.add_flow([("read", effects_update)])
         await self._block_until_done(rw)
 
+        assert hc.effects
         self.assertEqual(len(hc.effects), 1)
         self.assertEqual(hc.effects[0], effect)
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_update_priorities(self):
+    async def test_update_priorities(self) -> None:
         """Test updating priorities."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
@@ -756,8 +733,10 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
             "data": {"priorities": priorities, "priorities_autoselect": False},
         }
 
+        assert hc.priorities
         self.assertEqual(len(hc.priorities), 2)
         self.assertTrue(hc.priorities_autoselect)
+        assert hc.visible_priority
         self.assertEqual(hc.visible_priority["priority"], 240)
 
         await rw.add_flow([("read", priorities_update)])
@@ -780,7 +759,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_update_instances(self):
+    async def test_update_instances(self) -> None:
         """Test updating instances."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
@@ -795,6 +774,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
             "data": instances,
         }
 
+        assert hc.instances
         self.assertEqual(len(hc.instances), 2)
         await rw.add_flow([("read", instances_update)])
         await self._block_until_done(rw)
@@ -846,7 +826,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_update_led_mapping_type(self):
+    async def test_update_led_mapping_type(self) -> None:
         """Test updating LED mapping type."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
@@ -863,7 +843,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         self.assertEqual(hc.led_mapping_type, led_mapping_type)
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_update_sessions(self):
+    async def test_update_sessions(self) -> None:
         """Test updating sessions."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
@@ -890,7 +870,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_videomode(self):
+    async def test_videomode(self) -> None:
         """Test updating videomode."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
@@ -908,13 +888,14 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_update_leds(self):
+    async def test_update_leds(self) -> None:
         """Test updating LEDs."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
         leds = [{"hmin": 0.0, "hmax": 1.0, "vmin": 0.0, "vmax": 1.0}]
         leds_update = {"command": "leds-update", "data": {"leds": leds}}
 
+        assert hc.leds
         self.assertEqual(len(hc.leds), 254)
         await rw.add_flow([("read", leds_update)])
         await self._block_until_done(rw)
@@ -922,7 +903,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_send_set_color(self):
+    async def test_async_send_set_color(self) -> None:
         """Test controlling color."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         color_in = {
@@ -953,7 +934,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_send_set_effect(self):
+    async def test_async_send_set_effect(self) -> None:
         """Test controlling effect."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         effect_in = {
@@ -982,7 +963,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_send_set_image(self):
+    async def test_async_send_set_image(self) -> None:
         """Test controlling image."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         image_in = {
@@ -1021,7 +1002,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_send_clear(self):
+    async def test_async_send_clear(self) -> None:
         """Test clearing priorities."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         clear_in = {
@@ -1036,7 +1017,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_send_set_adjustment(self):
+    async def test_async_send_set_adjustment(self) -> None:
         """Test setting adjustment."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         adjustment_in = {"command": "adjustment", "adjustment": {"gammaRed": 1.5}}
@@ -1050,7 +1031,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_send_set_led_mapping_type(self):
+    async def test_async_send_set_led_mapping_type(self) -> None:
         """Test setting adjustment."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         led_mapping_type_in = {
@@ -1067,7 +1048,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_send_set_videomode(self):
+    async def test_async_send_set_videomode(self) -> None:
         """Test setting videomode."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         videomode_in = {"command": "videomode", "videoMode": "3DTAB"}
@@ -1079,7 +1060,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_send_set_component(self):
+    async def test_async_send_set_component(self) -> None:
         """Test setting component."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         componentstate = {
@@ -1100,7 +1081,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_send_set_sourceselect(self):
+    async def test_async_send_set_sourceselect(self) -> None:
         """Test setting sourceselect."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         sourceselect_in = {"command": "sourceselect", "priority": 50}
@@ -1112,7 +1093,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_start_async_send_stop_switch_instance(self):
+    async def test_start_async_send_stop_switch_instance(self) -> None:
         """Test starting, stopping and switching instances."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         start_in = {"command": "instance", "subcommand": "startInstance", "instance": 1}
@@ -1138,7 +1119,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_start_async_send_stop_image_stream(self):
+    async def test_start_async_send_stop_image_stream(self) -> None:
         """Test starting and stopping an image stream."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         start_in = {"command": "ledcolors", "subcommand": "imagestream-start"}
@@ -1157,7 +1138,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_send_start_stop_led_stream(self):
+    async def test_async_send_start_stop_led_stream(self) -> None:
         """Test starting and stopping an led stream."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         start_in = {"command": "ledcolors", "subcommand": "ledstream-start"}
@@ -1176,26 +1157,26 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_callbacks(self):
+    async def test_callbacks(self) -> None:
         """Test updating components."""
         received_default_json = None
         received_json = None
         client_json_list = []
         serverinfo_json = None
 
-        def default_callback(json):
+        def default_callback(json: Dict[str, Any]) -> None:
             nonlocal received_default_json
             received_default_json = json
 
-        def callback(json):
+        def callback(json: Dict[str, Any]) -> None:
             nonlocal received_json
             received_json = json
 
-        def client_callback(json):
+        def client_callback(json: Dict[str, Any]) -> None:
             nonlocal client_json_list
             client_json_list.append(json)
 
-        def serverinfo_callback(json):
+        def serverinfo_callback(json: Dict[str, Any]) -> None:
             nonlocal serverinfo_json
             serverinfo_json = json
 
@@ -1279,7 +1260,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         awaitable_json = None
 
-        async def awaitable_callback(json):
+        async def awaitable_callback(json: Dict[str, Any]) -> None:
             nonlocal awaitable_json
             awaitable_json = json
 
@@ -1304,7 +1285,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
             },
         )
 
-    async def test_is_auth_required(self):
+    async def test_is_auth_required(self) -> None:
         """Test determining if authorization is required."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
@@ -1324,7 +1305,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_send_login(self):
+    async def test_async_send_login(self) -> None:
         """Test setting videomode."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         token = "sekrit"
@@ -1340,7 +1321,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         self.assertTrue(await hc.async_send_login(token=token))
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_send_logout(self):
+    async def test_async_send_logout(self) -> None:
         """Test setting videomode."""
         before_tasks = asyncio.all_tasks()
         (rw, hc) = await self._create_and_test_basic_connected_client()
@@ -1373,12 +1354,12 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         self.assertEqual(before_tasks, after_tasks)
 
-    async def test_async_send_request_token(self):
+    async def test_async_send_request_token(self) -> None:
         """Test requesting an auth token."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
         # Test requesting a token.
-        request_token_in = {
+        request_token_in: Dict[str, Any] = {
             "command": "authorize",
             "subcommand": "requestToken",
             "comment": "Test",
@@ -1419,7 +1400,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         self.assertTrue(await hc.async_send_request_token_abort(**request_token_in))
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_send_serverinfo(self):
+    async def test_async_send_serverinfo(self) -> None:
         """Test requesting serverinfo."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
@@ -1427,7 +1408,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         self.assertTrue(await hc.async_send_get_serverinfo(**SERVERINFO_REQUEST))
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_disconnecting_leaves_no_tasks(self):
+    async def test_disconnecting_leaves_no_tasks(self) -> None:
         """Verify stopping the background task."""
         before_tasks = asyncio.all_tasks()
         (rw, hc) = await self._create_and_test_basic_connected_client()
@@ -1435,7 +1416,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         after_tasks = asyncio.all_tasks()
         self.assertEqual(before_tasks, after_tasks)
 
-    async def test_threaded_client(self):
+    async def test_threaded_client(self) -> None:
         """Test the threaded client."""
 
         hc = client.ThreadedHyperionClient(
@@ -1449,16 +1430,14 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         # Note: MockStreamReaderWriter is not thread safe, so only a very limited test
         # is performed here.
-        with asynctest.mock.patch(
-            "asyncio.open_connection", side_effect=ConnectionError
-        ):
+        with patch("asyncio.open_connection", side_effect=ConnectionError):
             self.assertFalse(hc.client_connect())
             self.assertFalse(hc.is_connected)
 
         hc.stop()
         hc.join()
 
-    def test_threaded_client_has_correct_methods(self):
+    def test_threaded_client_has_correct_methods(self) -> None:
         """Verify the threaded client exports all the correct methods."""
         contents = dir(
             client.ThreadedHyperionClient(
@@ -1479,7 +1458,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         ):
             self.assertIn(name, contents)
 
-    async def test_client_write_and_close_handles_network_issues(self):
+    async def test_client_write_and_close_handles_network_issues(self) -> None:
         """Verify sending data does not throw exceptions."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
@@ -1494,13 +1473,13 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await rw.assert_flow_finished()
 
-    async def test_client_handles_network_issues_and_reconnects(self):
+    async def test_client_handles_network_issues_and_reconnects(self) -> None:
         """Verify sending data does not throw exceptions."""
 
         # == Verify a read exception causes a disconnect.
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
-        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+        with patch("asyncio.open_connection", return_value=(rw, rw)):
             await rw.add_flow(
                 [
                     ("read", ConnectionError("Read exception")),
@@ -1519,7 +1498,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
         # Stage 1: Read returns empty, connection closed, but instantly re-established.
-        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+        with patch("asyncio.open_connection", return_value=(rw, rw)):
             await rw.add_flow(
                 [
                     ("read", ""),
@@ -1534,9 +1513,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
             await self._block_until_done(rw)
 
         # Stage 2: Read throws an exception, connection closed, cannot be re-established.
-        with asynctest.mock.patch(
-            "asyncio.open_connection", side_effect=ConnectionError
-        ):
+        with patch("asyncio.open_connection", side_effect=ConnectionError):
             await rw.add_flow(
                 [("read", ConnectionError("Connect error")), ("close", None)]
             )
@@ -1551,7 +1528,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
             # Stage 4: Fast-forward the remaining half of the timeout (+1 to ensure
             # we're definitely on the far side of the timeout), and it should automatically
             # reload.
-            with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+            with patch("asyncio.open_connection", return_value=(rw, rw)):
                 await rw.add_flow(
                     [
                         ("write", {**SERVERINFO_REQUEST, **{"tan": 3}}),
@@ -1567,12 +1544,12 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
             await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_client_connect_handles_network_issues(self):
+    async def test_client_connect_handles_network_issues(self) -> None:
         """Verify connecting does throw exceptions and behaves correctly."""
 
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
-        with asynctest.mock.patch(
+        with patch(
             "asyncio.open_connection",
             side_effect=ConnectionError("Connection exception"),
         ):
@@ -1582,13 +1559,11 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
             self.assertTrue(await hc.async_client_disconnect())
             await rw.assert_flow_finished()
 
-    async def test_client_timeout(self):
+    async def test_client_timeout(self) -> None:
         """Verify connection and read timeouts behave correctly."""
 
         # == Verify timeout is dealt with correctly during connection.
-        with asynctest.mock.patch(
-            "asyncio.open_connection", side_effect=asyncio.TimeoutError
-        ):
+        with patch("asyncio.open_connection", side_effect=asyncio.TimeoutError):
             hc = client.HyperionClient(TEST_HOST, TEST_PORT)
             self.assertFalse(await hc.async_client_connect())
 
@@ -1653,7 +1628,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_send_and_receive(self):
+    async def test_send_and_receive(self) -> None:
         """Test a send and receive wrapper."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         clear_in = {"command": "clear", "priority": 50, "tan": 2}
@@ -1698,7 +1673,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_using_custom_tan(self):
+    async def test_using_custom_tan(self) -> None:
         """Test a send and receive wrapper."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         clear_in = {"command": "clear", "priority": 50, "tan": 100}
@@ -1743,7 +1718,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_async_send_calls_have_await_call(self):
+    async def test_async_send_calls_have_await_call(self) -> None:
         """Verify async_send_* methods have an async_* pair."""
         for name, value in inspect.getmembers(client.HyperionClient):
             if name.startswith("async_send_") and callable(value):
@@ -1756,35 +1731,35 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
                 #         ._coro -> The wrapped coroutine within AwaitResponseWrapper.
                 self.assertEqual(wrapper.func.__self__._coro, value)
 
-    async def test_double_connect(self):
+    async def test_double_connect(self) -> None:
         """Test the behavior of a double connect call."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
-        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+        with patch("asyncio.open_connection", return_value=(rw, rw)):
             self.assertTrue(await hc.async_client_connect())
             self.assertTrue(hc.is_connected)
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_double_disconnect(self):
+    async def test_double_disconnect(self) -> None:
         """Test the behavior of a double disconnect call."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         await self._disconnect_and_assert_finished(rw, hc)
         self.assertTrue(await hc.async_client_disconnect())
 
-    async def test_generate_random_auth_id(self):
+    async def test_generate_random_auth_id(self) -> None:
         """Test arandomly generated auth id."""
         random_id = client.generate_random_auth_id()
         self.assertEqual(5, len(random_id))
         for c in random_id:
             self.assertTrue(c in string.ascii_letters + string.digits)
 
-    async def test_sysinfo(self):
+    async def test_sysinfo(self) -> None:
         """Test the sysinfo command."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
         sysinfo_in = {"command": "sysinfo", "tan": 2}
-        sysinfo_out = {
+        sysinfo_out: Dict[str, Any] = {
             **TEST_SYSINFO_RESPONSE,
             "tan": 2,
         }
@@ -1794,12 +1769,12 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
         self.assertEqual(sysinfo_out, sysinfo)
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_get_id(self):
+    async def test_get_id(self) -> None:
         """Verify fetching the client id."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
         sysinfo_in = {"command": "sysinfo", "tan": 2}
-        sysinfo_out = {
+        sysinfo_out: Dict[str, Any] = {
             **TEST_SYSINFO_RESPONSE,
             "tan": 2,
         }
@@ -1809,7 +1784,7 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_context_manager(self):
+    async def test_context_manager(self) -> None:
         """Test the context manager functionality."""
         rw = MockStreamReaderWriter(
             [
@@ -1818,8 +1793,9 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
             ]
         )
 
-        with asynctest.mock.patch("asyncio.open_connection", return_value=(rw, rw)):
+        with patch("asyncio.open_connection", return_value=(rw, rw)):
             async with client.HyperionClient(TEST_HOST, TEST_PORT) as hc:
+                assert hc
                 self.assertTrue(hc.is_connected)
                 await rw.assert_flow_finished()
                 await rw.add_flow([("close", None)])
@@ -1831,11 +1807,11 @@ class AsyncHyperionClientTestCase(asynctest.ClockedTestCase):
 class ResponseTestCase(unittest.TestCase):
     """Test case for the Hyperion Client Response object."""
 
-    def test_response(self):
+    def test_response(self) -> None:
         """Test a variety of responses."""
-        with self.assertRaises(TypeError):
-            client.ResponseOK()
 
+        # Intentionally pass the wrong type.
+        self.assertFalse(client.ResponseOK(["this", "is", "not", "a", "dict"]))  # type: ignore
         self.assertFalse(client.ResponseOK({"data": 1}))
         self.assertFalse(client.ResponseOK({const.KEY_SUCCESS: False}))
         self.assertTrue(client.ResponseOK({const.KEY_SUCCESS: True}))

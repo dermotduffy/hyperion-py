@@ -16,6 +16,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     keywords="hyperion ambilight",
     url="https://github.com/dermotduffy/hyperion-py",
+    package_data={"hyperion-py": ["py.typed"]},
     packages=setuptools.find_packages(),
     platforms="any",
     classifiers=[
@@ -28,5 +29,5 @@ setuptools.setup(
         "Topic :: Home Automation",
     ],
     python_requires=">=3.7",
-    zip_safe=True,
+    zip_safe=False,  # Required for py.typed.
 )
