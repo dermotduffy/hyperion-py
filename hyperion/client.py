@@ -238,14 +238,14 @@ class HyperionClient:
         if not self._raw_connection:
             if (
                 not self._client_state.get(const.KEY_LOGGED_IN)
-                and not await self._async_client_login()
+                and not await self.async_client_login()
             ):
                 await self.async_client_disconnect()
                 return False
 
             if (
                 not self._client_state.get(const.KEY_INSTANCE)
-                and not await self._async_client_select_instance()
+                and not await self.async_client_switch_instance()
             ):
                 await self.async_client_disconnect()
                 return False
@@ -275,7 +275,7 @@ class HyperionClient:
         await self._call_callbacks(str(data[const.KEY_COMMAND]), data)
         self._client_state.dirty = False
 
-    async def _async_client_login(self) -> bool:
+    async def async_client_login(self) -> bool:
         """Log the client in if a token is provided."""
         if self._token is None:
             self._client_state.set(const.KEY_LOGGED_IN, True)
@@ -283,7 +283,7 @@ class HyperionClient:
             return True
         return bool(LoginResponseOK(await self.async_login(token=self._token)))
 
-    async def _async_client_select_instance(self) -> bool:
+    async def async_client_switch_instance(self) -> bool:
         """Select an instance the user has specified."""
         if (
             self._client_state.get(const.KEY_INSTANCE) is None

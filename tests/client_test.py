@@ -456,6 +456,41 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
         self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
         self.assertFalse(hc.has_loaded_state)
 
+        # Manually log in.
+        auth_login_in = {
+            "command": "authorize",
+            "subcommand": "login",
+            "token": TEST_TOKEN,
+            "tan": 1,
+        }
+        auth_login_out = {"command": "authorize-login", "success": True, "tan": 1}
+
+        await rw.add_flow([("write", auth_login_in), ("read", auth_login_out)])
+        self.assertTrue(await hc.async_client_login())
+
+        # Manually switch instance (and get serverinfo automatically).
+        switch_in = {
+            "command": "instance",
+            "subcommand": "switchTo",
+            "instance": TEST_INSTANCE,
+            "tan": 2,
+        }
+        switch_out = {
+            "command": "instance-switchTo",
+            "info": {"instance": TEST_INSTANCE},
+            "success": True,
+            "tan": 2,
+        }
+        await rw.add_flow(
+            [
+                ("write", switch_in),
+                ("read", switch_out),
+                ("write", {**SERVERINFO_REQUEST, **{"tan": 3}}),
+                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 3}}),
+            ]
+        )
+
+        self.assertTrue(await hc.async_client_switch_instance())
         await self._disconnect_and_assert_finished(rw, hc)
 
     async def test_instance_switch_causes_refresh(self) -> None:
