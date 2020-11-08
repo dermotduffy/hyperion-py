@@ -42,6 +42,7 @@ SERVERINFO_REQUEST = {
 }
 
 TEST_SYSINFO_ID = "f9aab089-f85a-55cf-b7c1-222a72faebe9"
+TEST_SYSINFO_VERSION = "2.0.0-alpha.8"
 TEST_SYSINFO_RESPONSE = {
     "command": "sysinfo",
     "info": {
@@ -50,7 +51,7 @@ TEST_SYSINFO_RESPONSE = {
             "gitremote": "https://github.com/hyperion-project/hyperion.ng.git",
             "id": TEST_SYSINFO_ID,
             "time": "Sep 29 2020 12:33:00",
-            "version": "2.0.0-alpha.8",
+            "version": TEST_SYSINFO_VERSION,
         },
         "system": {
             "architecture": "arm",
@@ -1804,8 +1805,8 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
         self.assertEqual(sysinfo_out, sysinfo)
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_get_id(self) -> None:
-        """Verify fetching the client id."""
+    async def test_sysinfo_id(self) -> None:
+        """Verify fetching the sysinfo id."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
         sysinfo_in = {"command": "sysinfo", "tan": 2}
@@ -1815,7 +1816,22 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
         }
 
         await rw.add_flow([("write", sysinfo_in), ("read", sysinfo_out)])
-        self.assertEqual(TEST_SYSINFO_ID, await hc.async_id())
+        self.assertEqual(TEST_SYSINFO_ID, await hc.async_sysinfo_id())
+
+        await self._disconnect_and_assert_finished(rw, hc)
+
+    async def test_sysinfo_version(self) -> None:
+        """Verify fetching the sysinfo version."""
+        (rw, hc) = await self._create_and_test_basic_connected_client()
+
+        sysinfo_in = {"command": "sysinfo", "tan": 2}
+        sysinfo_out: Dict[str, Any] = {
+            **TEST_SYSINFO_RESPONSE,
+            "tan": 2,
+        }
+
+        await rw.add_flow([("write", sysinfo_in), ("read", sysinfo_out)])
+        self.assertEqual(TEST_SYSINFO_VERSION, await hc.async_sysinfo_version())
 
         await self._disconnect_and_assert_finished(rw, hc)
 

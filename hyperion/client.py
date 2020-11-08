@@ -1363,7 +1363,7 @@ class HyperionClient:
 
     async_sysinfo = AwaitResponseWrapper(async_send_sysinfo)
 
-    async def async_id(self) -> Optional[str]:
+    async def async_sysinfo_id(self) -> Optional[str]:
         """Return an ID representing this Hyperion server."""
         sysinfo = await self.async_sysinfo()
         if sysinfo is not None and ResponseOK(sysinfo):
@@ -1375,6 +1375,20 @@ class HyperionClient:
             if not sysinfo_id or type(sysinfo_id) != str:
                 return None
             return str(sysinfo_id)
+        return None
+
+    async def async_sysinfo_version(self) -> Optional[str]:
+        """Return the Hyperion server version."""
+        sysinfo = await self.async_sysinfo()
+        if sysinfo is not None and ResponseOK(sysinfo):
+            sysinfo_version = (
+                sysinfo.get(const.KEY_INFO, {})
+                .get(const.KEY_HYPERION, {})
+                .get(const.KEY_VERSION, None)
+            )
+            if not sysinfo_version or type(sysinfo_version) != str:
+                return None
+            return str(sysinfo_version)
         return None
 
 
