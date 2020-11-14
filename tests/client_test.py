@@ -492,15 +492,23 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
         )
 
         self.assertTrue(await hc.async_client_switch_instance())
+        self.assertTrue(await hc.async_get_serverinfo())
         await self._disconnect_and_assert_finished(rw, hc)
 
-    async def test_instance_switch_causes_refresh(self) -> None:
-        """Test that an instance switch causes a full refresh."""
+    async def test_instance_switch_causes_empty_state(
+        self,
+    ) -> None:
+        """Test that an instance will have no state after an instance switch."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
         self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
 
         instance = 1
-        switch_response = {
+        instance_switchto_request = {
+            "command": "instance",
+            "subcommand": "switchTo",
+            "instance": instance,
+        }
+        instance_switchto_response = {
             "command": "instance-switchTo",
             "info": {"instance": instance},
             "success": True,
@@ -508,74 +516,18 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
 
         await rw.add_flow(
             [
-                ("read", switch_response),
-                ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
-                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}}),
+                ("write", instance_switchto_request),
+                ("read", instance_switchto_response),
             ]
         )
-        await self._block_until_done(rw)
-        self.assertEqual(hc.instance, instance)
 
-        await self._disconnect_and_assert_finished(rw, hc)
-
-        # Verify that post-disconnect the instance is preserved so next
-        # connect() will re-join the same instance.
-        self.assertFalse(hc.is_connected)
-
-        # Ensure there is no live instance, but that the target instance is the
-        # one that was switched to.
-        self.assertEqual(hc.instance, None)
-        self.assertEqual(hc.target_instance, instance)
-
-    async def test_instance_switch_causes_disconnect_and_reconnect_if_refresh_fails(
-        self,
-    ) -> None:
-        """Test that an instance must get a full refresh or it will disconnect."""
-        (rw, hc) = await self._create_and_test_basic_connected_client()
-
-        instance = 1
-        instance_switch_response = {
-            "command": "instance-switchTo",
-            "info": {"instance": instance},
-            "success": True,
-        }
-
-        self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
-
-        instance_switchto_request = {
-            "command": "instance",
-            "subcommand": "switchTo",
-            "instance": instance,
-        }
-
-        with patch("asyncio.open_connection", return_value=(rw, rw)):
-            await rw.add_flow(
-                [
-                    ("read", instance_switch_response),
-                    ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
-                    (
-                        "read",
-                        "THIS IS NOT A VALID SERVERINFO AND SHOULD CAUSE A DISCONNECT"
-                        + "\n",
-                    ),
-                    ("close", None),
-                    ("write", {**instance_switchto_request, **{"tan": 3}}),
-                    ("read", {**instance_switch_response, **{"tan": 3}}),
-                    ("write", {**SERVERINFO_REQUEST, **{"tan": 4}}),
-                    (
-                        "read",
-                        {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 4}},
-                    ),
-                ]
-            )
-
-            await self._block_until_done(
-                rw, additional_wait_secs=const.DEFAULT_TIMEOUT_SECS
-            )
+        self.assertTrue(await hc.async_send_switch_instance(instance=instance))
+        await rw.block_until_flow_empty()
 
         self.assertTrue(hc.is_connected)
         self.assertEqual(hc.instance, instance)
         self.assertEqual(hc.target_instance, instance)
+        self.assertFalse(hc.has_loaded_state)
 
         await self._disconnect_and_assert_finished(rw, hc)
 
@@ -799,6 +751,11 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
         """Test updating instances."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
+        assert hc.instances
+        self.assertEqual(len(hc.instances), 2)
+        self.assertEqual(hc.instance, 0)
+        self.assertEqual(hc.target_instance, 0)
+
         instances = [
             {"instance": 0, "running": True, "friendly_name": "Test instance 0"},
             {"instance": 1, "running": True, "friendly_name": "Test instance 1"},
@@ -810,38 +767,14 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
             "data": instances,
         }
 
-        assert hc.instances
-        self.assertEqual(len(hc.instances), 2)
         await rw.add_flow([("read", instances_update)])
         await self._block_until_done(rw)
         self.assertEqual(hc.instances, instances)
 
-        # Switch to instance 1
-        instance = 1
-        instance_switchto_update = {
-            "command": "instance-switchTo",
-            "info": {"instance": instance},
-            "success": True,
-            "tan": 0,
-        }
-
-        self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
-
-        await rw.add_flow(
-            [
-                ("read", instance_switchto_update),
-                ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
-                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}}),
-            ]
-        )
-        await self._block_until_done(rw)
-
-        self.assertEqual(hc.instance, instance)
-
         # Now update instances again to exclude instance 1 (it should reset to 0).
         instances = [
-            {"instance": 0, "running": True, "friendly_name": "Test instance 0"},
-            {"instance": 1, "running": False, "friendly_name": "Test instance 1"},
+            {"instance": 0, "running": False, "friendly_name": "Test instance 0"},
+            {"instance": 1, "running": True, "friendly_name": "Test instance 1"},
             {"instance": 2, "running": True, "friendly_name": "Test instance 2"},
         ]
 
@@ -853,14 +786,14 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
         await rw.add_flow(
             [
                 ("read", instances_update),
-                ("write", {**SERVERINFO_REQUEST, **{"tan": 3}}),
-                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 3}}),
+                ("close", None),
             ]
         )
         await self._block_until_done(rw)
-
-        self.assertEqual(hc.instance, const.DEFAULT_INSTANCE)
-        await self._disconnect_and_assert_finished(rw, hc)
+        self.assertFalse(hc.is_connected)
+        self.assertEqual(hc.instance, None)
+        self.assertEqual(hc.target_instance, 0)
+        await rw.assert_flow_finished()
 
     async def test_update_led_mapping_type(self) -> None:
         """Test updating LED mapping type."""

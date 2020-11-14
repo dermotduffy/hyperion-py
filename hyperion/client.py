@@ -435,14 +435,8 @@ class HyperionClient:
                         await self._async_client_disconnect_internal()
                         await asyncio.sleep(const.DEFAULT_CONNECTION_RETRY_DELAY_SECS)
                         continue
-                elif not self._client_state.get(
-                    const.KEY_LOADED_STATE
-                ) and not ServerInfoResponseOK(await self.async_get_serverinfo()):
-                    await self._async_client_disconnect_internal()
 
-                if self._client_state.get(
-                    const.KEY_CONNECTED
-                ) and self._client_state.get(const.KEY_LOADED_STATE):
+                if self._client_state.get(const.KEY_CONNECTED):
                     self._maintenance_event.clear()
 
         except asyncio.CancelledError:
@@ -496,10 +490,6 @@ class HyperionClient:
         self._update_serverinfo(None)
         await self._call_client_state_callback_if_necessary()
 
-        # Wake the maintenance task to load the state (this is called from the
-        # receive loop, so it cannot be loaded from here).
-        self._maintenance_event.set()
-
     async def _async_receive_once(self) -> bool:
         """Manage the bidirectional connection to the server."""
         resp_json = await self._async_safely_read_command(use_timeout=False)
@@ -548,8 +538,7 @@ class HyperionClient:
             and const.KEY_DATA in resp_json
         ):
             # If instances are changed, and the current instance is not listed
-            # in the new instance update, then the connection is automatically
-            # bumped back to instance 0 (the default).
+            # in the new instance update, then the client should disconnect.
             instances = resp_json[const.KEY_DATA]
 
             for instance in instances:
@@ -561,7 +550,7 @@ class HyperionClient:
                     self._update_instances(instances)
                     break
             else:
-                await self._handle_changed_instance(const.DEFAULT_INSTANCE)
+                await self.async_client_disconnect()
         elif SwitchInstanceResponseOK(resp_json):
             # Upon connection being successfully switched to another instance,
             # the client will receive:
