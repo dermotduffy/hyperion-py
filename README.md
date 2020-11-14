@@ -29,10 +29,32 @@ decent chance at staying functional regardless of underlying data model changes
 from the server, and the responsibility to match the changes to the server's
 data model (e.g. new Hyperion server features) belong to the caller.
 
-### Connection & Disconnection
+### Constructor Arguments
 
-   * async_client_connect()
-   * async_client_disconnect()
+The following arguments may be passed to the `HyperionClient` constructor:
+
+|Argument|Type|Default|Description|
+|--------|----|-------|-----------|
+|host    |`str`||Host or IP to connect to|
+|port    |`int`|19444|Port to connect to|
+|default_callback|`callable`|None|A callable for Hyperion callbacks. See [callbacks](#callbacks)|
+|callbacks|`dict`|None|A dictionary of callables keyed by the update name. See [callbacks](#callbacks)|
+|token|`str`|None|An authentication token|
+|instance|`int`|0|An instance id to switch to upon connection|
+|origin|`str`|"hyperion-py"|An arbitrary string describing the calling application|
+|timeout_secs|`float`|5.0|The number of seconds to wait for a server response or connection attempt before giving up. See [timeouts](#timeouts)|
+|retry_secs|`float`|30.0|The number of seconds between connection attempts|
+|raw_connection|`bool`|False|If True, the connect call will establish the network connection but not attempt to authenticate, switch to the required instance or load state. The client must call `async_client_login` to login, `async_client_switch_instance` to switch to the configured instance and `async_get_serverinfo` to load the state manually. This may be useful if the caller wishes to communicate with the server prior to authentication.|
+
+### Connection, disconnection and client control calls
+
+   * `async_client_connect()`: Connect the client.
+   * `async_client_disconnect()`: Disconnect the client.
+   * `async_client_login()`: Login a connected client. Automatically called by
+     `async_client_connect()` unless the `raw_connection` constructor argument is True.
+   * `async_client_switch_instance()`: Switch to the configured instance on the Hyperion
+     server. Automatically called by `async_client_connect()` unless the `raw_connection`
+     constructor argument is True.
 
 ### Native API Calls
 
@@ -52,6 +74,7 @@ All async calls start with `async_`.
 |async_logout|async_send_logout|[Docs](https://docs.hyperion-project.org/en/json/Authorization.html#logout)|
 |async_request_token|async_send_request_token|[Docs](https://docs.hyperion-project.org/en/json/Authorization.html#request-a-token)|
 |async_request_token_abort|async_send_request_token_abort|[Docs](https://docs.hyperion-project.org/en/json/Authorization.html#request-a-token)|
+|async_get_serverinfo|async_send_get_serverinfo|[Docs](https://docs.hyperion-project.org/en/json/ServerInfo.html#parts)|
 |async_set_adjustment|async_send_set_adjustment|[Docs](https://docs.hyperion-project.org/en/json/Control.html#adjustments)|
 |async_set_color|async_send_set_color|[Docs](https://docs.hyperion-project.org/en/json/Control.html#set-color)|
 |async_set_component|async_send_set_component|[Docs](https://docs.hyperion-project.org/en/json/Control.html#control-components)|
@@ -63,6 +86,7 @@ All async calls start with `async_`.
 |async_start_instance|async_send_start_instance|[Docs](https://docs.hyperion-project.org/en/json/Control.html#control-instances)|
 |async_stop_instance|async_send_stop_instance|[Docs](https://docs.hyperion-project.org/en/json/Control.html#control-instances)|
 |async_switch_instance|async_send_switch_instance|[Docs](https://docs.hyperion-project.org/en/json/Control.html#api-instance-handling)|
+|async_sysinfo|async_send_sysinfo|[Docs](https://docs.hyperion-project.org/en/json/ServerInfo.html#system-hyperion)|
 
 Note that the `command` and `subcommand` keys shown in the above linked
 documentation will automatically be included in the calls the client sends, and
@@ -243,6 +267,7 @@ logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 asyncio.get_event_loop().run_until_complete(instance_start_and_switch())
 ```
 
+<a name="callbacks"></a>
 ### Callbacks
 
 The client can be configured to callback as the Hyperion server reports new
@@ -257,12 +282,15 @@ Callbacks can be specified in the `HyperionClient` constructor
 
 As above, the `callbacks` dict is keyed on the relevant Hyperion subscription
 `command` (e.g. `components-update`, `priorities-update`). The client also
-provides a custom callback with command `connection-update` of the following
+provides a custom callback with command `client-update` of the following
 form:
 
 ```python
-{"command": "connection-update",
- "connected": True}
+{"command": "client-update",
+ "connected": True,
+ "logged-in": True,
+ "instance": 0,
+ "loaded-state": True}
 ```
 
 This can be used to take special action as the client connects or disconnects from the server.
@@ -378,6 +406,7 @@ it is the caller's responsibility to ensure no two simultaneous calls share a
 `tan` (as otherwise the client would not be able to match the call to the
 response, and this exception will be raised automatically prior to the call).
 
+<a name="timeouts"></a>
 ## Timeouts
 
 The client makes liberal use of timeouts, which may be specified at multiple levels:
@@ -391,7 +420,7 @@ Timeout values:
    * `0`: If `0` is used as a timeout, the client default (specified in the constructor) will be used.
    * `>0.0`: This number of seconds (or partial seconds) will be used.
 
-By default, all requests will honour the `timeout_secs` specified in the client constructor unless explicitly overriden and defaults to 5 seconds (see [const.py](https://github.com/dermotduffy/hyperion-py/blob/master/hyperion/const.py#L95)). The one exception to this is the `async_send_request_token` which has a much larger default (180 seconds, see [const.py](https://github.com/dermotduffy/hyperion-py/blob/master/hyperion/const.py#L96)) as this request involves the user needing the interact with the Hyperion UI prior to the call being able to return.
+By default, all requests will honour the `timeout_secs` specified in the client constructor unless explicitly overridden and defaults to 5 seconds (see [const.py](https://github.com/dermotduffy/hyperion-py/blob/master/hyperion/const.py#L95)). The one exception to this is the `async_send_request_token` which has a much larger default (180 seconds, see [const.py](https://github.com/dermotduffy/hyperion-py/blob/master/hyperion/const.py#L96)) as this request involves the user needing the interact with the Hyperion UI prior to the call being able to return.
 
 
 ## Helpers
