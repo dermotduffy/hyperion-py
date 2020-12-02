@@ -17,7 +17,7 @@ setuptools.setup(
     keywords="hyperion ambilight",
     url="https://github.com/dermotduffy/hyperion-py",
     package_data={"hyperion-py": ["py.typed"]},
-    packages=setuptools.find_packages(),
+    packages=setuptools.find_packages(exclude=["tests","tests.*"]),
     platforms="any",
     classifiers=[
         "Intended Audience :: Developers",
