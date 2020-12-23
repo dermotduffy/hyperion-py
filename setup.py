@@ -7,7 +7,7 @@ with open("README.md") as fh:
 
 setuptools.setup(
     name="hyperion-py",
-    version="0.6.0",
+    version="0.6.1",
     author="Dermot Duffy",
     author_email="dermot.duffy@gmail.com",
     description="Hyperion Ambient Lighting Python Package",
@@ -17,7 +17,7 @@ setuptools.setup(
     keywords="hyperion ambilight",
     url="https://github.com/dermotduffy/hyperion-py",
     package_data={"hyperion-py": ["py.typed"]},
-    packages=setuptools.find_packages(exclude=["tests","tests.*"]),
+    packages=setuptools.find_packages(exclude=["tests", "tests.*"]),
     platforms="any",
     classifiers=[
         "Intended Audience :: Developers",
