@@ -345,8 +345,8 @@ class HyperionClient:
         if not self._writer:
             return False
 
-        _LOGGER.debug("Send to server (%s): %s", self._host_port, request)
         output = json.dumps(request, sort_keys=True).encode("UTF-8") + b"\n"
+        _LOGGER.debug("Send to server (%s): %s", self._host_port, output)
         try:
             self._writer.write(output)
             await self._writer.drain()
