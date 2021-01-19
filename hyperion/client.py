@@ -878,9 +878,8 @@ class HyperionClient:
         """Update adjustment."""
         if (
             self._serverinfo is None
-            or adjustment is None
+            or not adjustment
             or type(adjustment) != list
-            or type(adjustment[0]) != dict
         ):
             return
         self._serverinfo[const.KEY_ADJUSTMENT] = adjustment
