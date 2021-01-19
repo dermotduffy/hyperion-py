@@ -880,7 +880,6 @@ class HyperionClient:
             self._serverinfo is None
             or adjustment is None
             or type(adjustment) != list
-            or len(adjustment) != 1
             or type(adjustment[0]) != dict
         ):
             return
