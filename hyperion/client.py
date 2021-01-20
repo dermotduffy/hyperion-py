@@ -19,6 +19,7 @@ from typing import (
     Callable,
     Coroutine,
     Dict,
+    Iterable,
     List,
     Optional,
     Type,
@@ -88,8 +89,12 @@ class HyperionClient:
         self,
         host: str,
         port: int = const.DEFAULT_PORT_JSON,
-        default_callback: Optional[HyperionCallback] = None,
-        callbacks: Optional[Dict[str, HyperionCallback]] = None,
+        default_callback: Optional[
+            Union[HyperionCallback, Iterable[HyperionCallback]]
+        ] = None,
+        callbacks: Optional[
+            Dict[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
+        ] = None,
         token: Optional[str] = None,
         instance: int = const.DEFAULT_INSTANCE,
         origin: str = const.DEFAULT_ORIGIN,
@@ -100,8 +105,11 @@ class HyperionClient:
         """Initialize client."""
         _LOGGER.debug("HyperionClient initiated with: (%s:%i)", host, port)
 
+        self._callbacks: Dict[str, List[HyperionCallback]] = {}
         self.set_callbacks(callbacks or {})
-        self.set_default_callback(default_callback)
+
+        self._default_callback: List[HyperionCallback] = []
+        self.set_default_callback(default_callback or [])
 
         self._host = host
         self._port = port
@@ -161,18 +169,109 @@ class HyperionClient:
             }
         )
 
+    # ===================
+    # || Callbacks     ||
+    # ===================
+
+    def _set_or_add_callbacks(
+        self,
+        callbacks: Optional[Union[HyperionCallback, Iterable[HyperionCallback]]],
+        add: bool,
+        target: List[HyperionCallback],
+    ) -> None:
+        """Set or add a single or list of callbacks."""
+        if callbacks is not None and not isinstance(
+            callbacks, collections.abc.Iterable
+        ):
+            callbacks = [callbacks]
+        if not add:
+            target.clear()
+        if callbacks is not None:
+            target.extend(callbacks)
+
+    def _remove_callbacks(
+        self,
+        callbacks: Union[HyperionCallback, Iterable[HyperionCallback]],
+        target: List[HyperionCallback],
+    ) -> None:
+        """Set or add a single or list of callbacks."""
+        if not callbacks:
+            return
+        if not isinstance(callbacks, collections.abc.Iterable):
+            callbacks = [callbacks]
+
+        for callback in callbacks:
+            if callback in target:
+                target.remove(callback)
+
     def set_callbacks(
         self,
-        callbacks: Dict[str, HyperionCallback],
+        callbacks: Optional[
+            Dict[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
+        ],
     ) -> None:
-        """Set the update callbacks."""
-        self._callbacks = callbacks
+        """Set update callbacks."""
+        if not callbacks:
+            self._callbacks = {}
+            return
+        for name, value in callbacks.items():
+            self._set_or_add_callbacks(
+                value, False, self._callbacks.setdefault(name, [])
+            )
+
+    def add_callbacks(
+        self,
+        callbacks: Dict[str, Union[HyperionCallback, Iterable[HyperionCallback]]],
+    ) -> None:
+        """Add update callbacks."""
+        if not callbacks:
+            return
+        for name, value in callbacks.items():
+            self._set_or_add_callbacks(
+                value, True, self._callbacks.setdefault(name, [])
+            )
+
+    def remove_callbacks(
+        self,
+        callbacks: Dict[str, Union[HyperionCallback, Iterable[HyperionCallback]]],
+    ) -> None:
+        """Add update callbacks."""
+        if not callbacks:
+            return
+        for name, value in callbacks.items():
+            if name not in self._callbacks:
+                continue
+            self._remove_callbacks(value, self._callbacks[name])
 
     def set_default_callback(
-        self, default_callback: Optional[HyperionCallback]
+        self,
+        default_callback: Optional[Union[HyperionCallback, Iterable[HyperionCallback]]],
     ) -> None:
         """Set the default callbacks."""
-        self._default_callback = default_callback
+        self._set_or_add_callbacks(default_callback, False, self._default_callback)
+
+    def add_default_callback(
+        self,
+        default_callback: Union[HyperionCallback, Iterable[HyperionCallback]],
+    ) -> None:
+        """Set the default callbacks."""
+        self._set_or_add_callbacks(default_callback, True, self._default_callback)
+
+    def remove_default_callback(
+        self,
+        default_callback: Union[HyperionCallback, Iterable[HyperionCallback]],
+    ) -> None:
+        """Set the default callbacks."""
+        self._remove_callbacks(default_callback, self._default_callback)
+
+    async def _call_callbacks(self, command: str, json: Dict[str, Any]) -> None:
+        """Call the relevant callbacks for the given command."""
+        callbacks = self._callbacks.get(command, self._default_callback)
+        for callback in callbacks:
+            if inspect.iscoroutinefunction(callback):
+                await cast(Awaitable[None], callback(json))
+            else:
+                callback(json)
 
     # ===================
     # || Networking    ||
@@ -620,15 +719,6 @@ class HyperionClient:
     # ==================
     # || Helper calls ||
     # ==================
-
-    async def _call_callbacks(self, command: str, json: Dict[str, Any]) -> None:
-        """Call the relevant callbacks for the given command."""
-        callback = self._callbacks.get(command, self._default_callback)
-        if callback:
-            if inspect.iscoroutinefunction(callback):
-                await cast(Awaitable[None], callback(json))
-            else:
-                callback(json)
 
     @property
     def _host_port(self) -> str:
@@ -1386,8 +1476,12 @@ class ThreadedHyperionClient(threading.Thread):
         self,
         host: str,
         port: int = const.DEFAULT_PORT_JSON,
-        default_callback: Optional[HyperionCallback] = None,
-        callbacks: Optional[Dict[str, HyperionCallback]] = None,
+        default_callback: Optional[
+            Union[HyperionCallback, Iterable[HyperionCallback]]
+        ] = None,
+        callbacks: Optional[
+            Dict[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
+        ] = None,
         token: Optional[str] = None,
         instance: int = const.DEFAULT_INSTANCE,
         origin: str = const.DEFAULT_ORIGIN,

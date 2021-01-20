@@ -2,7 +2,7 @@
 """Test for the Hyperion Client."""
 
 from asynctest import helpers, ClockedTestCase
-from asynctest.mock import patch
+from asynctest.mock import patch, call, Mock
 import asyncio
 import inspect
 import json
@@ -1128,64 +1128,55 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
 
     async def test_callbacks(self) -> None:
         """Test updating components."""
-        received_default_json = None
-        received_json = None
-        client_json_list = []
-        serverinfo_json = None
-
-        def default_callback(json: Dict[str, Any]) -> None:
-            nonlocal received_default_json
-            received_default_json = json
-
-        def callback(json: Dict[str, Any]) -> None:
-            nonlocal received_json
-            received_json = json
-
-        def client_callback(json: Dict[str, Any]) -> None:
-            nonlocal client_json_list
-            client_json_list.append(json)
-
-        def serverinfo_callback(json: Dict[str, Any]) -> None:
-            nonlocal serverinfo_json
-            serverinfo_json = json
+        cb = Mock()
 
         (rw, hc) = await self._create_and_test_basic_connected_client(
-            default_callback=default_callback,
+            default_callback=cb.default_callback,
             callbacks={
-                "components-update": callback,
-                "serverinfo": serverinfo_callback,
-                "client-update": client_callback,
+                "components-update": cb.component_callback,
+                "serverinfo": cb.serverinfo_callback,
+                "client-update": cb.client_callback,
             },
         )
 
         self.assertEqual(
             [
-                {
-                    "command": "client-update",
-                    "connected": True,
-                    "logged-in": False,
-                    "instance": const.DEFAULT_INSTANCE,
-                    "loaded-state": False,
-                },
-                {
-                    "command": "client-update",
-                    "connected": True,
-                    "logged-in": True,
-                    "instance": const.DEFAULT_INSTANCE,
-                    "loaded-state": False,
-                },
-                {
-                    "command": "client-update",
-                    "connected": True,
-                    "logged-in": True,
-                    "instance": const.DEFAULT_INSTANCE,
-                    "loaded-state": True,
-                },
+                call(
+                    {
+                        "command": "client-update",
+                        "connected": True,
+                        "logged-in": False,
+                        "instance": const.DEFAULT_INSTANCE,
+                        "loaded-state": False,
+                    }
+                ),
+                call(
+                    {
+                        "command": "client-update",
+                        "connected": True,
+                        "logged-in": True,
+                        "instance": const.DEFAULT_INSTANCE,
+                        "loaded-state": False,
+                    }
+                ),
+                call(
+                    {
+                        "command": "client-update",
+                        "connected": True,
+                        "logged-in": True,
+                        "instance": const.DEFAULT_INSTANCE,
+                        "loaded-state": True,
+                    }
+                ),
             ],
-            client_json_list,
+            cb.client_callback.call_args_list,
         )
 
-        self.assertEqual(serverinfo_json, self._read_file(FILE_SERVERINFO_RESPONSE))
+        self.assertEqual(
+            cb.serverinfo_callback.call_args.args[0],
+            self._read_file(FILE_SERVERINFO_RESPONSE),
+        )
+        cb.reset_mock()
 
         # === Flip a component.
         components_update = {
@@ -1197,35 +1188,96 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
         await rw.add_flow([("read", components_update)])
         await self._block_until_done(rw)
 
-        self.assertIsNone(received_default_json)
-        self.assertEqual(received_json, components_update)
+        cb.default_callback.assert_not_called()
+        cb.component_callback.assert_called_once_with(components_update)
+        cb.reset_mock()
 
-        # Reset the callback variable, call with a new update that does not
-        # have a registered callback.
-        received_json = None
+        # Call with a new update that does not have a registered callback.
         random_update_value = "random-update"
         random_update = {
             "command": random_update_value,
         }
         await rw.add_flow([("read", random_update)])
         await self._block_until_done(rw)
-        self.assertEqual(received_default_json, random_update)
-        self.assertIsNone(received_json)
 
-        # Now add a callback for that update.
-        hc.set_callbacks({random_update_value: callback})
+        cb.default_callback.assert_called_once_with(random_update)
+        cb.reset_mock()
+
+        # Now set a callback for that update.
+        hc.set_callbacks({random_update_value: cb.first_callback})
         await rw.add_flow([("read", random_update)])
         await self._block_until_done(rw)
-        self.assertEqual(received_json, random_update)
+        cb.first_callback.assert_called_once_with(random_update)
+        cb.reset_mock()
 
-        # Reset default callback variable.
-        received_default_json = None
-        hc.set_default_callback(None)
-
-        # Verify that the default callback is not called.
-        await rw.add_flow([("read", components_update)])
+        # Now add a second callback for that update.
+        hc.add_callbacks({random_update_value: cb.second_callback})
+        await rw.add_flow([("read", random_update)])
         await self._block_until_done(rw)
-        self.assertIsNone(received_default_json)
+        cb.first_callback.assert_called_once_with(random_update)
+        cb.second_callback.assert_called_once_with(random_update)
+        cb.reset_mock()
+
+        # Now add multiple callbacks.
+        hc.add_callbacks({random_update_value: [cb.third_callback, cb.fourth_callback]})
+        hc.add_callbacks({})
+        await rw.add_flow([("read", random_update)])
+        await self._block_until_done(rw)
+        cb.first_callback.assert_called_once_with(random_update)
+        cb.second_callback.assert_called_once_with(random_update)
+        cb.third_callback.assert_called_once_with(random_update)
+        cb.fourth_callback.assert_called_once_with(random_update)
+        cb.reset_mock()
+
+        # Set multiple callbacks (effectively removing  a few).
+        hc.set_callbacks({random_update_value: [cb.third_callback, cb.fourth_callback]})
+        await rw.add_flow([("read", random_update)])
+        await self._block_until_done(rw)
+        cb.first_callback.assert_not_called()
+        cb.second_callback.assert_not_called()
+        cb.third_callback.assert_called_once_with(random_update)
+        cb.fourth_callback.assert_called_once_with(random_update)
+        cb.reset_mock()
+
+        # Remove some callbacks.
+        hc.add_callbacks({random_update_value: [cb.first_callback, cb.second_callback]})
+        hc.remove_callbacks({random_update_value: cb.third_callback})
+        hc.remove_callbacks({random_update_value: [cb.fourth_callback]})
+        hc.remove_callbacks({})
+        hc.remove_callbacks({"not-here": cb.null_callback})
+        hc.remove_callbacks({random_update_value: []})
+        await rw.add_flow([("read", random_update)])
+        await self._block_until_done(rw)
+        cb.first_callback.assert_called_once_with(random_update)
+        cb.second_callback.assert_called_once_with(random_update)
+        cb.third_callback.assert_not_called()
+        cb.fourth_callback.assert_not_called()
+        cb.null_callback.assert_not_called()
+        cb.reset_mock()
+
+        # Remove all callbacks.
+        hc.set_callbacks(None)
+        await rw.add_flow([("read", random_update)])
+        await self._block_until_done(rw)
+        cb.first_callback.assert_not_called()
+        cb.second_callback.assert_not_called()
+        cb.reset_mock()
+
+        # Add another default callback.
+        hc.add_default_callback(cb.second_default_callback)
+        await rw.add_flow([("read", random_update)])
+        await self._block_until_done(rw)
+        cb.default_callback.assert_called_once_with(random_update)
+        cb.second_default_callback.assert_called_once_with(random_update)
+        cb.reset_mock()
+
+        # Remove a default callback.
+        hc.remove_default_callback(cb.default_callback)
+        await rw.add_flow([("read", random_update)])
+        await self._block_until_done(rw)
+        cb.default_callback.assert_not_called()
+        cb.second_default_callback.assert_called_once_with(random_update)
+        cb.reset_mock()
 
         awaitable_json = None
 
@@ -1233,18 +1285,19 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
             nonlocal awaitable_json
             awaitable_json = json
 
-        # Verify async awaitables.
-        hc.set_callbacks({random_update_value: awaitable_callback})
+        # Set an async default callback.
+        hc.set_default_callback(awaitable_callback)
         await rw.add_flow([("read", random_update)])
         await self._block_until_done(rw)
+        cb.default_callback.assert_not_called()
+        cb.second_default_callback.assert_not_called()
         self.assertEqual(awaitable_json, random_update)
 
         # Verify disconnection callback.
-        hc.set_callbacks({"client-update": client_callback})
+        hc.set_callbacks({"client-update": cb.client_callback})
         await self._disconnect_and_assert_finished(rw, hc)
 
-        self.assertEqual(
-            client_json_list[-1],
+        cb.client_callback.assert_called_once_with(
             {
                 "command": "client-update",
                 "connected": False,
