@@ -1,17 +1,18 @@
 #!/usr/bin/python
 """Test for the Hyperion Client."""
-
-from asynctest import helpers, ClockedTestCase
-from asynctest.mock import patch, call, Mock
 import asyncio
 import inspect
 import json
 import os
 import unittest
-from hyperion import client, const
 import logging
 import string
-from typing import cast, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+from asynctest import helpers, ClockedTestCase
+from asynctest.mock import patch, call, Mock
+
+from hyperion import client, const
 
 logging.basicConfig()
 _LOGGER = logging.getLogger(__name__)
@@ -69,6 +70,16 @@ TEST_SYSINFO_RESPONSE = {
 }
 
 
+def _get_test_filepath(filename: str) -> str:
+    return os.path.join(PATH_TESTDATA, filename)
+
+
+def _read_file(filename: str) -> Any:
+    with open(_get_test_filepath(filename)) as handle:
+        data = handle.read()
+    return json.loads(data)
+
+
 class MockStreamReaderWriter:
     """A simple mocl StreamReader and StreamWriter."""
 
@@ -117,15 +128,12 @@ class MockStreamReaderWriter:
         async with self._flow_cv:
             assert not self._flow
 
-    def _get_test_filepath(self, filename: str) -> str:
-        return os.path.join(PATH_TESTDATA, filename)
-
-    def _to_json_line(self, data: Any) -> bytes:
+    @classmethod
+    def _to_json_line(cls, data: Any) -> bytes:
         """Convert data to an encoded JSON string."""
-        if type(data) == str:
-            return cast(bytes, data.encode("UTF-8"))
-        else:
-            return (json.dumps(data, sort_keys=True) + "\n").encode("UTF-8")
+        if isinstance(data, str):
+            return data.encode("UTF-8")
+        return (json.dumps(data, sort_keys=True) + "\n").encode("UTF-8")
 
     async def _pop_flow(self) -> Tuple[str, Any]:
         """Remove an item from the front of the flow and notify."""
@@ -136,10 +144,6 @@ class MockStreamReaderWriter:
             item = self._flow.pop(0)
             self._flow_cv.notify_all()
             return item
-
-    def _is_exception(self, data: Any) -> bool:
-        """Determine if a data element is an Exception object."""
-        return isinstance(data, Exception)
 
     async def readline(self) -> bytes:
         """Read a line from the mock.
@@ -166,9 +170,9 @@ class MockStreamReaderWriter:
             cmd, data = await self._pop_flow()
             await self.unblock_write()
 
-            if self._is_exception(data):
+            if isinstance(data, Exception):
                 raise data
-            return self._to_json_line(data)
+            return MockStreamReaderWriter._to_json_line(data)
 
     def close(self) -> None:
         """Close the mock."""
@@ -180,7 +184,7 @@ class MockStreamReaderWriter:
         cmd, data = await self._pop_flow()
         assert cmd == "close", "wait_closed() called unexpectedly"
 
-        if self._is_exception(data):
+        if isinstance(data, Exception):
             raise data
 
     def write(self, data_in: bytes) -> None:
@@ -216,8 +220,9 @@ class MockStreamReaderWriter:
                             break
                     else:
                         raise AssertionError(
-                            f'Unexpected call to drain with data "{self._data_to_drain!r}", expected '
-                            '"{cmd}" with data "{data!r}"'
+                            f"Unexpected call to drain with data "
+                            f'"{self._data_to_drain!r}", expected "{cmd}" with data '
+                            f'"{data!r}"'
                         )
 
             if should_block:
@@ -226,11 +231,11 @@ class MockStreamReaderWriter:
 
             assert self._data_to_drain is not None
 
-            if self._is_exception(data):
+            if isinstance(data, Exception):
                 # 'data' is an exception, raise it.
                 await self._pop_flow()
                 raise data
-            elif callable(data):
+            if callable(data):
                 # 'data' is a callable, call it with the decoded data.
                 try:
                     data_in = json.loads(self._data_to_drain)
@@ -239,7 +244,7 @@ class MockStreamReaderWriter:
                 assert data(data_in)
             else:
                 # 'data' is just data. Direct compare.
-                assert self._data_to_drain == self._to_json_line(data)
+                assert self._data_to_drain == MockStreamReaderWriter._to_json_line(data)
 
             self._data_to_drain = None
 
@@ -252,18 +257,10 @@ class MockStreamReaderWriter:
 class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
     """Test case for the Hyperion Client."""
 
-    def _read_file(self, filename: str) -> Any:
-        with open(self._get_test_filepath(filename)) as fh:
-            data = fh.read()
-        return json.loads(data)
-
-    def _get_test_filepath(self, filename: str) -> str:
-        return os.path.join(PATH_TESTDATA, filename)
-
     def setUp(self) -> None:
         """Set up testcase."""
         self.loop.set_debug(enabled=True)
-        client._LOGGER.setLevel(logging.DEBUG)
+        client._LOGGER.setLevel(logging.DEBUG)  # pylint: disable=protected-access
 
     def tearDown(self) -> None:
         """Tear down testcase."""
@@ -275,7 +272,7 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
         rw = MockStreamReaderWriter(
             [
                 ("write", {**SERVERINFO_REQUEST, **{"tan": 1}}),
-                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 1}}),
+                ("read", {**_read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 1}}),
             ]
         )
 
@@ -366,7 +363,7 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
                 (
                     "read",
                     {
-                        **self._read_file(FILE_SERVERINFO_RESPONSE),
+                        **_read_file(FILE_SERVERINFO_RESPONSE),
                         **{"tan": 1, "success": False},
                     },
                 ),
@@ -396,7 +393,7 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
                 ("write", {**authorize_request, **{"tan": 1}}),
                 ("read", {**authorize_response, **{"tan": 1}}),
                 ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
-                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}}),
+                ("read", {**_read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}}),
             ]
         )
 
@@ -426,7 +423,7 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
                 ("write", {**instance_request, **{"tan": 1}}),
                 ("read", {**instance_response, **{"tan": 1}}),
                 ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
-                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}}),
+                ("read", {**_read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}}),
             ]
         )
 
@@ -487,7 +484,7 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
                 ("write", switch_in),
                 ("read", switch_out),
                 ("write", {**SERVERINFO_REQUEST, **{"tan": 3}}),
-                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 3}}),
+                ("read", {**_read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 3}}),
             ]
         )
 
@@ -564,7 +561,7 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
         """Test the client reports correctly on whether components are on."""
         (rw, hc) = await self._create_and_test_basic_connected_client()
 
-        with open(self._get_test_filepath(FILE_SERVERINFO_RESPONSE)) as fh:
+        with open(_get_test_filepath(FILE_SERVERINFO_RESPONSE)) as fh:
             serverinfo_command_response = fh.readline()
         serverinfo = json.loads(serverinfo_command_response)
 
@@ -1126,6 +1123,7 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
 
         await self._disconnect_and_assert_finished(rw, hc)
 
+    # pylint: disable=too-many-statements
     async def test_callbacks(self) -> None:
         """Test updating components."""
         cb = Mock()
@@ -1174,7 +1172,7 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
 
         self.assertEqual(
             cb.serverinfo_callback.call_args[0][0],
-            self._read_file(FILE_SERVERINFO_RESPONSE),
+            _read_file(FILE_SERVERINFO_RESPONSE),
         )
         cb.reset_mock()
 
@@ -1281,9 +1279,9 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
 
         awaitable_json = None
 
-        async def awaitable_callback(json: Dict[str, Any]) -> None:
+        async def awaitable_callback(arg: Dict[str, Any]) -> None:
             nonlocal awaitable_json
-            awaitable_json = json
+            awaitable_json = arg
 
         # Set an async default callback.
         hc.set_default_callback(awaitable_callback)
@@ -1469,13 +1467,13 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
         )
 
         # Verify all async methods have a sync wrapped version.
-        for name, value in inspect.getmembers(
+        for name, _ in inspect.getmembers(
             client.ThreadedHyperionClient, inspect.iscoroutinefunction
         ):
             if name.startswith("async_"):
                 self.assertIn(name[len("async_") :], contents)
 
-        for name, value in inspect.getmembers(
+        for name, _ in inspect.getmembers(
             client.ThreadedHyperionClient, lambda o: isinstance(o, property)
         ):
             self.assertIn(name, contents)
@@ -1509,7 +1507,7 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
                     ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
                     (
                         "read",
-                        {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}},
+                        {**_read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}},
                     ),
                 ]
             )
@@ -1528,13 +1526,14 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
                     ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
                     (
                         "read",
-                        {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}},
+                        {**_read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}},
                     ),
                 ]
             )
             await self._block_until_done(rw)
 
-        # Stage 2: Read throws an exception, connection closed, cannot be re-established.
+        # Stage 2: Read throws an exception, connection closed, cannot be
+        # re-established.
         with patch("asyncio.open_connection", side_effect=ConnectionError):
             await rw.add_flow(
                 [("read", ConnectionError("Connect error")), ("close", None)]
@@ -1548,15 +1547,15 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
             self.assertFalse(hc.is_connected)
 
             # Stage 4: Fast-forward the remaining half of the timeout (+1 to ensure
-            # we're definitely on the far side of the timeout), and it should automatically
-            # reload.
+            # we're definitely on the far side of the timeout), and it should
+            # automatically reload.
             with patch("asyncio.open_connection", return_value=(rw, rw)):
                 await rw.add_flow(
                     [
                         ("write", {**SERVERINFO_REQUEST, **{"tan": 3}}),
                         (
                             "read",
-                            {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 3}},
+                            {**_read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 3}},
                         ),
                     ]
                 )
@@ -1751,6 +1750,7 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
                 # wrapper.func -> Returns a partial for AwaitResponseWrapper.__call__()
                 #     .__self__ -> AwaitResponseWrapper
                 #         ._coro -> The wrapped coroutine within AwaitResponseWrapper.
+                # pylint: disable=protected-access
                 self.assertEqual(wrapper.func.__self__._coro, value)
 
     async def test_double_connect(self) -> None:
@@ -1826,7 +1826,7 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
         rw = MockStreamReaderWriter(
             [
                 ("write", {**SERVERINFO_REQUEST, **{"tan": 1}}),
-                ("read", {**self._read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 1}}),
+                ("read", {**_read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 1}}),
             ]
         )
 
@@ -1848,7 +1848,7 @@ class ResponseTestCase(unittest.TestCase):
         """Test a variety of responses."""
 
         # Intentionally pass the wrong type.
-        self.assertFalse(client.ResponseOK(["this", "is", "not", "a", "dict"]))  # type: ignore
+        self.assertFalse(client.ResponseOK(["not", "a", "dict"]))  # type: ignore
         self.assertFalse(client.ResponseOK({"data": 1}))
         self.assertFalse(client.ResponseOK({const.KEY_SUCCESS: False}))
         self.assertTrue(client.ResponseOK({const.KEY_SUCCESS: True}))
