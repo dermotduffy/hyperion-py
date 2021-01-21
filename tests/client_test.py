@@ -1173,7 +1173,7 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
         )
 
         self.assertEqual(
-            cb.serverinfo_callback.call_args.args[0],
+            cb.serverinfo_callback.call_args[0][0],
             self._read_file(FILE_SERVERINFO_RESPONSE),
         )
         cb.reset_mock()
