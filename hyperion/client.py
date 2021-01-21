@@ -12,6 +12,8 @@ import random
 import string
 import threading
 from types import TracebackType
+
+# pylint: disable=unused-import
 from typing import (
     cast,
     Any,
@@ -85,6 +87,7 @@ class HyperionClientState:
 class HyperionClient:
     """Hyperion Client."""
 
+    # pylint: disable=too-many-arguments
     def __init__(
         self,
         host: str,
@@ -173,8 +176,9 @@ class HyperionClient:
     # || Callbacks     ||
     # ===================
 
+    @classmethod
     def _set_or_add_callbacks(
-        self,
+        cls,
         callbacks: Optional[Union[HyperionCallback, Iterable[HyperionCallback]]],
         add: bool,
         target: List[HyperionCallback],
@@ -189,8 +193,9 @@ class HyperionClient:
         if callbacks is not None:
             target.extend(callbacks)
 
+    @classmethod
     def _remove_callbacks(
-        self,
+        cls,
         callbacks: Union[HyperionCallback, Iterable[HyperionCallback]],
         target: List[HyperionCallback],
     ) -> None:
@@ -215,7 +220,7 @@ class HyperionClient:
             self._callbacks = {}
             return
         for name, value in callbacks.items():
-            self._set_or_add_callbacks(
+            HyperionClient._set_or_add_callbacks(
                 value, False, self._callbacks.setdefault(name, [])
             )
 
@@ -227,7 +232,7 @@ class HyperionClient:
         if not callbacks:
             return
         for name, value in callbacks.items():
-            self._set_or_add_callbacks(
+            HyperionClient._set_or_add_callbacks(
                 value, True, self._callbacks.setdefault(name, [])
             )
 
@@ -241,37 +246,41 @@ class HyperionClient:
         for name, value in callbacks.items():
             if name not in self._callbacks:
                 continue
-            self._remove_callbacks(value, self._callbacks[name])
+            HyperionClient._remove_callbacks(value, self._callbacks[name])
 
     def set_default_callback(
         self,
         default_callback: Optional[Union[HyperionCallback, Iterable[HyperionCallback]]],
     ) -> None:
         """Set the default callbacks."""
-        self._set_or_add_callbacks(default_callback, False, self._default_callback)
+        HyperionClient._set_or_add_callbacks(
+            default_callback, False, self._default_callback
+        )
 
     def add_default_callback(
         self,
         default_callback: Union[HyperionCallback, Iterable[HyperionCallback]],
     ) -> None:
         """Set the default callbacks."""
-        self._set_or_add_callbacks(default_callback, True, self._default_callback)
+        HyperionClient._set_or_add_callbacks(
+            default_callback, True, self._default_callback
+        )
 
     def remove_default_callback(
         self,
         default_callback: Union[HyperionCallback, Iterable[HyperionCallback]],
     ) -> None:
         """Set the default callbacks."""
-        self._remove_callbacks(default_callback, self._default_callback)
+        HyperionClient._remove_callbacks(default_callback, self._default_callback)
 
-    async def _call_callbacks(self, command: str, json: Dict[str, Any]) -> None:
+    async def _call_callbacks(self, command: str, arg: Dict[str, Any]) -> None:
         """Call the relevant callbacks for the given command."""
         callbacks = self._callbacks.get(command, self._default_callback)
         for callback in callbacks:
             if inspect.iscoroutinefunction(callback):
-                await cast(Awaitable[None], callback(json))
+                await cast(Awaitable[None], callback(arg))
             else:
-                callback(json)
+                callback(arg)
 
     # ===================
     # || Networking    ||
@@ -365,7 +374,7 @@ class HyperionClient:
         """Call the client state callbacks if state has changed."""
         if not self._client_state.dirty:
             return
-        data = self._set_data(
+        data = HyperionClient._set_data(
             self._client_state.get_all(),
             hard={
                 const.KEY_COMMAND: f"{const.KEY_CLIENT}-{const.KEY_UPDATE}",
@@ -407,9 +416,7 @@ class HyperionClient:
 
         return await self._async_client_disconnect_internal()
 
-    async def _async_client_disconnect_internal(
-        self, stop_receive_task: bool = True
-    ) -> bool:
+    async def _async_client_disconnect_internal(self) -> bool:
         """Close streams to the Hyperion server (may reconnect)."""
         if not self._writer:
             return True
@@ -458,6 +465,7 @@ class HyperionClient:
             return False
         return True
 
+    # pylint: disable=too-many-return-statements
     async def _async_safely_read_command(
         self, use_timeout: bool = True
     ) -> Optional[Dict[str, Any]]:
@@ -538,7 +546,7 @@ class HyperionClient:
                 if self._client_state.get(const.KEY_CONNECTED):
                     self._maintenance_event.clear()
 
-        except asyncio.CancelledError:
+        except asyncio.CancelledError:  # pylint: disable=try-except-raise
             # Don't log CancelledError, but do propagate it upwards.
             raise
         except Exception:
@@ -564,7 +572,7 @@ class HyperionClient:
         """
         if task is None:
             return False
-        elif stop_task:
+        if stop_task:
             task.cancel()
 
         # Yield to the event loop, so the above cancellation can be processed.
@@ -589,6 +597,7 @@ class HyperionClient:
         self._update_serverinfo(None)
         await self._call_client_state_callback_if_necessary()
 
+    # pylint: disable=too-many-branches
     async def _async_receive_once(self) -> bool:
         """Manage the bidirectional connection to the server."""
         resp_json = await self._async_safely_read_command(use_timeout=False)
@@ -654,7 +663,14 @@ class HyperionClient:
             # Upon connection being successfully switched to another instance,
             # the client will receive:
             #
-            # {"command":"instance-switchTo","info":{"instance":1},"success":true,"tan":0}
+            # {
+            #     "command":"instance-switchTo",
+            #     "info": {
+            #         "instance": 1
+            #     },
+            #     "success":true,
+            #     "tan":0
+            # }
             #
             # This is our cue to fully refresh our serverinfo so our internal
             # state is representing the correct instance.
@@ -693,12 +709,10 @@ class HyperionClient:
 
         await self._call_callbacks(command, resp_json)
         await self._call_client_state_callback_if_necessary()
-        await self._handle_response_for_caller(command, resp_json)
+        await self._handle_response_for_caller(resp_json)
         return True
 
-    async def _handle_response_for_caller(
-        self, command: str, resp_json: Dict[str, Any]
-    ) -> None:
+    async def _handle_response_for_caller(self, resp_json: Dict[str, Any]) -> None:
         """Handle a server response for a caller."""
 
         tan = resp_json.get(const.KEY_TAN)
@@ -725,8 +739,9 @@ class HyperionClient:
         """Return a host:port string for this server."""
         return "%s:%i" % (self._host, self._port)
 
+    @classmethod
     def _set_data(
-        self,
+        cls,
         data: Dict[Any, Any],
         hard: Optional[Dict[Any, Any]] = None,
         soft: Optional[Dict[Any, Any]] = None,
@@ -774,8 +789,6 @@ class HyperionClient:
             return self._tan_responses[tan]
         except asyncio.TimeoutError:
             pass
-        except Exception:
-            raise
         finally:
             # This should not be necessary, this function should be able to use
             # 'async with self._tan_cv', however this does not currently play nice
@@ -818,8 +831,8 @@ class HyperionClient:
                 timeout_secs = cast(float, data[const.KEY_TIMEOUT_SECS])
                 del data[const.KEY_TIMEOUT_SECS]
                 return timeout_secs
-            elif self._timeout_secs == 0:
-                return hyperion_client._timeout_secs
+            if self._timeout_secs == 0:
+                return hyperion_client._timeout_secs  # pylint: disable=protected-access
             return self._timeout_secs
 
         async def __call__(
@@ -850,8 +863,7 @@ class HyperionClient:
             """Return a partial call that uses the correct 'self'."""
             # Need to ensure __call__ receives the 'correct' outer
             # 'self', which is 'instance' in this function.
-            a = functools.partial(self.__call__, instance)
-            return a
+            return functools.partial(self.__call__, instance)
 
     # =============================
     # || Authorization API calls ||
@@ -862,9 +874,9 @@ class HyperionClient:
     # https://docs.hyperion-project.org/en/json/Authorization.html#authorization-check
     # ================================================================================
 
-    async def async_send_is_auth_required(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_is_auth_required(self, *_: Any, **kwargs: Any) -> bool:
         """Determine if authorization is required."""
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={
                 const.KEY_COMMAND: const.KEY_AUTHORIZE,
@@ -880,9 +892,9 @@ class HyperionClient:
     # https://docs.hyperion-project.org/en/json/Authorization.html#login-with-token
     # =============================================================================
 
-    async def async_send_login(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_login(self, *_: Any, **kwargs: Any) -> bool:
         """Login with token."""
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={
                 const.KEY_COMMAND: const.KEY_AUTHORIZE,
@@ -898,9 +910,9 @@ class HyperionClient:
     # https://docs.hyperion-project.org/en/json/Authorization.html#logout
     # =============================================================================
 
-    async def async_send_logout(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_logout(self, *_: Any, **kwargs: Any) -> bool:
         """Logout."""
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={
                 const.KEY_COMMAND: const.KEY_AUTHORIZE,
@@ -916,12 +928,12 @@ class HyperionClient:
     # https://docs.hyperion-project.org/en/json/Authorization.html#request-a-token
     # ============================================================================
 
-    async def async_send_request_token(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_request_token(self, *_: Any, **kwargs: Any) -> bool:
         """Request an authorization token.
 
         The user will accept/deny the token request on the Web UI.
         """
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={
                 const.KEY_COMMAND: const.KEY_AUTHORIZE,
@@ -937,9 +949,9 @@ class HyperionClient:
         async_send_request_token, timeout_secs=const.DEFAULT_REQUEST_TOKEN_TIMEOUT_SECS
     )
 
-    async def async_send_request_token_abort(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_request_token_abort(self, *_: Any, **kwargs: Any) -> bool:
         """Abort a request for an authorization token."""
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={
                 const.KEY_COMMAND: const.KEY_AUTHORIZE,
@@ -969,14 +981,16 @@ class HyperionClient:
         if (
             self._serverinfo is None
             or not adjustment
-            or type(adjustment) != list
+            or not isinstance(adjustment, list)
         ):
             return
         self._serverinfo[const.KEY_ADJUSTMENT] = adjustment
 
-    async def async_send_set_adjustment(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_set_adjustment(self, *_: Any, **kwargs: Any) -> bool:
         """Request that a color be set."""
-        data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_ADJUSTMENT})
+        data = HyperionClient._set_data(
+            kwargs, hard={const.KEY_COMMAND: const.KEY_ADJUSTMENT}
+        )
         return await self._async_send_json(data)
 
     async_set_adjustment = AwaitResponseWrapper(async_send_set_adjustment)
@@ -986,9 +1000,11 @@ class HyperionClient:
     # Set: https://docs.hyperion-project.org/en/json/Control.html#clear
     # =====================================================================
 
-    async def async_send_clear(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_clear(self, *_: Any, **kwargs: Any) -> bool:
         """Request that a priority be cleared."""
-        data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_CLEAR})
+        data = HyperionClient._set_data(
+            kwargs, hard={const.KEY_COMMAND: const.KEY_CLEAR}
+        )
         return await self._async_send_json(data)
 
     async_clear = AwaitResponseWrapper(async_send_clear)
@@ -998,9 +1014,9 @@ class HyperionClient:
     # Set: https://docs.hyperion-project.org/en/json/Control.html#set-color
     # =====================================================================
 
-    async def async_send_set_color(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_set_color(self, *_: Any, **kwargs: Any) -> bool:
         """Request that a color be set."""
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={const.KEY_COMMAND: const.KEY_COLOR},
             soft={const.KEY_ORIGIN: self._origin},
@@ -1025,7 +1041,7 @@ class HyperionClient:
         """Update full Hyperion state."""
         if (
             self._serverinfo is None
-            or type(new_component) != dict
+            or not isinstance(new_component, dict)
             or const.KEY_NAME not in new_component
         ):
             return
@@ -1043,9 +1059,9 @@ class HyperionClient:
         else:
             new_components.append(new_component)
 
-    async def async_send_set_component(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_set_component(self, *_: Any, **kwargs: Any) -> bool:
         """Request that a color be set."""
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs, hard={const.KEY_COMMAND: const.KEY_COMPONENTSTATE}
         )
         return await self._async_send_json(data)
@@ -1092,13 +1108,13 @@ class HyperionClient:
 
     def _update_effects(self, effects: List[Dict[str, Any]]) -> None:
         """Update effects."""
-        if self._serverinfo is None or type(effects) != list:
+        if self._serverinfo is None or not isinstance(effects, list):
             return
         self._serverinfo[const.KEY_EFFECTS] = effects
 
-    async def async_send_set_effect(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_set_effect(self, *_: Any, **kwargs: Any) -> bool:
         """Request that an effect be set."""
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={const.KEY_COMMAND: const.KEY_EFFECT},
             soft={const.KEY_ORIGIN: self._origin},
@@ -1112,9 +1128,9 @@ class HyperionClient:
     # Set: https://docs.hyperion-project.org/en/json/Control.html#set-image
     # =================================================================================
 
-    async def async_send_set_image(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_set_image(self, *_: Any, **kwargs: Any) -> bool:
         """Request that an image be set."""
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={const.KEY_COMMAND: const.KEY_IMAGE},
             soft={const.KEY_ORIGIN: self._origin},
@@ -1129,9 +1145,9 @@ class HyperionClient:
     # Set: https://docs.hyperion-project.org/en/json/Control.html#live-image-stream
     # ================================================================================
 
-    async def async_send_image_stream_start(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_image_stream_start(self, *_: Any, **kwargs: Any) -> bool:
         """Request a live image stream to start."""
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={
                 const.KEY_COMMAND: const.KEY_LEDCOLORS,
@@ -1142,9 +1158,9 @@ class HyperionClient:
 
     async_image_stream_start = AwaitResponseWrapper(async_send_image_stream_start)
 
-    async def async_send_image_stream_stop(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_image_stream_stop(self, *_: Any, **kwargs: Any) -> bool:
         """Request a live image stream to stop."""
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={
                 const.KEY_COMMAND: const.KEY_LEDCOLORS,
@@ -1169,13 +1185,13 @@ class HyperionClient:
 
     def _update_instances(self, instances: List[Dict[str, Any]]) -> None:
         """Update instances."""
-        if self._serverinfo is None or type(instances) != list:
+        if self._serverinfo is None or not isinstance(instances, list):
             return
         self._serverinfo[const.KEY_INSTANCE] = instances
 
-    async def async_send_start_instance(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_start_instance(self, *_: Any, **kwargs: Any) -> bool:
         """Start an instance."""
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={
                 const.KEY_COMMAND: const.KEY_INSTANCE,
@@ -1186,9 +1202,9 @@ class HyperionClient:
 
     async_start_instance = AwaitResponseWrapper(async_send_start_instance)
 
-    async def async_send_stop_instance(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_stop_instance(self, *_: Any, **kwargs: Any) -> bool:
         """Stop an instance."""
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={
                 const.KEY_COMMAND: const.KEY_INSTANCE,
@@ -1199,9 +1215,9 @@ class HyperionClient:
 
     async_stop_instance = AwaitResponseWrapper(async_send_stop_instance)
 
-    async def async_send_switch_instance(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_switch_instance(self, *_: Any, **kwargs: Any) -> bool:
         """Stop an instance."""
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={
                 const.KEY_COMMAND: const.KEY_INSTANCE,
@@ -1225,16 +1241,17 @@ class HyperionClient:
 
     def _update_leds(self, leds: List[Dict[str, Any]]) -> None:
         """Update LEDs."""
-        if self._serverinfo is None or type(leds) != list:
+        if self._serverinfo is None or not isinstance(leds, list):
             return
         self._serverinfo[const.KEY_LEDS] = leds
 
-    # ====================================================================================
+    # pylint: disable=line-too-long
+    # =================================================================================
     # ** LED Mapping **
     # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#led-mapping
     # Update: https://docs.hyperion-project.org/en/json/Subscribe.html#led-mapping-updates
     # Set: https://docs.hyperion-project.org/en/json/Control.html#led-mapping
-    # ====================================================================================
+    # =================================================================================
 
     @property
     def led_mapping_type(self) -> Optional[str]:
@@ -1243,26 +1260,28 @@ class HyperionClient:
 
     def _update_led_mapping_type(self, led_mapping_type: str) -> None:
         """Update LED mapping  type."""
-        if self._serverinfo is None or type(led_mapping_type) != str:
+        if self._serverinfo is None or not isinstance(led_mapping_type, str):
             return
         self._serverinfo[const.KEY_LED_MAPPING_TYPE] = led_mapping_type
 
-    async def async_send_set_led_mapping_type(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_set_led_mapping_type(self, *_: Any, **kwargs: Any) -> bool:
         """Request the LED mapping type be set."""
-        data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_PROCESSING})
+        data = HyperionClient._set_data(
+            kwargs, hard={const.KEY_COMMAND: const.KEY_PROCESSING}
+        )
         return await self._async_send_json(data)
 
     async_set_led_mapping_type = AwaitResponseWrapper(async_send_set_led_mapping_type)
 
-    # ===================================================================================
+    # =================================================================================
     # ** Live LED Streaming **
     # Update: https://docs.hyperion-project.org/en/json/Control.html#live-led-color-stream
     # Set: https://docs.hyperion-project.org/en/json/Control.html#live-led-color-stream
-    # ====================================================================================
+    # =================================================================================
 
-    async def async_send_led_stream_start(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_led_stream_start(self, *_: Any, **kwargs: Any) -> bool:
         """Request a live led stream to start."""
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={
                 const.KEY_COMMAND: const.KEY_LEDCOLORS,
@@ -1273,9 +1292,9 @@ class HyperionClient:
 
     async_led_stream_start = AwaitResponseWrapper(async_send_led_stream_start)
 
-    async def async_send_led_stream_stop(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_led_stream_stop(self, *_: Any, **kwargs: Any) -> bool:
         """Request a live led stream to stop."""
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={
                 const.KEY_COMMAND: const.KEY_LEDCOLORS,
@@ -1299,7 +1318,7 @@ class HyperionClient:
 
     def _update_priorities(self, priorities: List[Dict[str, Any]]) -> None:
         """Update priorites."""
-        if self._serverinfo is None or type(priorities) != list:
+        if self._serverinfo is None or not isinstance(priorities, list):
             return
         self._serverinfo[const.KEY_PRIORITIES] = priorities
 
@@ -1315,12 +1334,12 @@ class HyperionClient:
                 return priority
         return None
 
-    # ======================================================================================================
+    # =================================================================================
     # ** Priorites Autoselect **
     # Full State: https://docs.hyperion-project.org/en/json/ServerInfo.html#priorities-selection-auto-manual
     # Update: https://docs.hyperion-project.org/en/json/Subscribe.html#priority-updates
     # Set: https://docs.hyperion-project.org/en/json/Control.html#source-selection
-    # ======================================================================================================
+    # =================================================================================
 
     @property
     def priorities_autoselect(self) -> Optional[bool]:
@@ -1329,13 +1348,15 @@ class HyperionClient:
 
     def _update_priorities_autoselect(self, priorities_autoselect: bool) -> None:
         """Update priorites."""
-        if self._serverinfo is None or type(priorities_autoselect) != bool:
+        if self._serverinfo is None or not isinstance(priorities_autoselect, bool):
             return
         self._serverinfo[const.KEY_PRIORITIES_AUTOSELECT] = priorities_autoselect
 
-    async def async_send_set_sourceselect(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_set_sourceselect(self, *_: Any, **kwargs: Any) -> bool:
         """Request the sourceselect be set."""
-        data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_SOURCESELECT})
+        data = HyperionClient._set_data(
+            kwargs, hard={const.KEY_COMMAND: const.KEY_SOURCESELECT}
+        )
         return await self._async_send_json(data)
 
     async_set_sourceselect = AwaitResponseWrapper(async_send_set_sourceselect)
@@ -1353,7 +1374,7 @@ class HyperionClient:
 
     def _update_sessions(self, sessions: List[Dict[str, Any]]) -> None:
         """Update sessions."""
-        if self._serverinfo is None or type(sessions) != list:
+        if self._serverinfo is None or not isinstance(sessions, list):
             return
         self._serverinfo[const.KEY_SESSIONS] = sessions
 
@@ -1377,12 +1398,12 @@ class HyperionClient:
             return None
         return self._serverinfo.get(key)
 
-    async def async_send_get_serverinfo(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_get_serverinfo(self, *_: Any, **kwargs: Any) -> bool:
         """Server a serverinfo full state/subscription request."""
         # Request full state ('serverinfo') and subscribe to relevant
         # future updates to keep this object state accurate without the need to
         # poll.
-        data = self._set_data(
+        data = HyperionClient._set_data(
             kwargs,
             hard={
                 const.KEY_COMMAND: const.KEY_SERVERINFO,
@@ -1420,9 +1441,11 @@ class HyperionClient:
         if self._serverinfo:
             self._serverinfo[const.KEY_VIDEOMODE] = videomode
 
-    async def async_send_set_videomode(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_set_videomode(self, *_: Any, **kwargs: Any) -> bool:
         """Request the LED mapping type be set."""
-        data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_VIDEOMODE})
+        data = HyperionClient._set_data(
+            kwargs, hard={const.KEY_COMMAND: const.KEY_VIDEOMODE}
+        )
         return await self._async_send_json(data)
 
     async_set_videomode = AwaitResponseWrapper(async_send_set_videomode)
@@ -1433,9 +1456,11 @@ class HyperionClient:
     # Returns system information from the Hyperion instance.
     # ==================================================================================
 
-    async def async_send_sysinfo(self, *args: Any, **kwargs: Any) -> bool:
+    async def async_send_sysinfo(self, *_: Any, **kwargs: Any) -> bool:
         """Request the sysinfo."""
-        data = self._set_data(kwargs, hard={const.KEY_COMMAND: const.KEY_SYSINFO})
+        data = HyperionClient._set_data(
+            kwargs, hard={const.KEY_COMMAND: const.KEY_SYSINFO}
+        )
         return await self._async_send_json(data)
 
     async_sysinfo = AwaitResponseWrapper(async_send_sysinfo)
@@ -1449,7 +1474,7 @@ class HyperionClient:
                 .get(const.KEY_HYPERION, {})
                 .get(const.KEY_ID, None)
             )
-            if not sysinfo_id or type(sysinfo_id) != str:
+            if not sysinfo_id or not isinstance(sysinfo_id, str):
                 return None
             return str(sysinfo_id)
         return None
@@ -1463,7 +1488,7 @@ class HyperionClient:
                 .get(const.KEY_HYPERION, {})
                 .get(const.KEY_VERSION, None)
             )
-            if not sysinfo_version or type(sysinfo_version) != str:
+            if not sysinfo_version or not isinstance(sysinfo_version, str):
                 return None
             return str(sysinfo_version)
         return None
@@ -1472,6 +1497,7 @@ class HyperionClient:
 class ThreadedHyperionClient(threading.Thread):
     """Hyperion Client that runs in a dedicated thread."""
 
+    # pylint: disable=too-many-arguments
     def __init__(
         self,
         host: str,
@@ -1593,7 +1619,7 @@ class ResponseOK:
         """Determine if the response indicates success."""
         if not self._response:
             return False
-        if not type(self._response) == dict:
+        if not isinstance(self._response, dict):
             return False
         if not self._response.get(const.KEY_SUCCESS, False):
             return False

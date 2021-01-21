@@ -75,7 +75,8 @@ KEY_VIDEOMODE = "videomode"
 KEY_VISIBLE = "visible"
 KEY_VIDEOMODES = ["2D", "3DSBS", "3DTAB"]
 
-# ComponentIDs from: https://docs.hyperion-project.org/en/json/Control.html#components-ids-explained
+# ComponentIDs from:
+# https://docs.hyperion-project.org/en/json/Control.html#components-ids-explained
 KEY_COMPONENTID = "componentId"
 KEY_COMPONENTID_ALL = "ALL"
 KEY_COMPONENTID_COLOR = "COLOR"
