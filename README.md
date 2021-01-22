@@ -410,7 +410,7 @@ response, and this exception will be raised automatically prior to the call).
 
 If a `HyperionClient` object is connected but destroyed prior to disconnection, a warning message may be printed ("Task was destroyed but it is pending!"). To avoid this, ensure to always call `async_client_disconnect` prior to destruction of a connected client. Alternatively use the async context manager:
 
-```
+```python
 async with client.HyperionClient(TEST_HOST, TEST_PORT) as hc:
     if not hc:
         return
