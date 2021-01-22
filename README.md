@@ -116,7 +116,7 @@ async def print_brightness():
     if not await hyperion_client.async_client_connect():
         return
     print("Brightness: %i%%" % hyperion_client.adjustment[0][const.KEY_BRIGHTNESS])
-
+    await hyperion_client.async_client_disconnect()
 
 if __name__ == "__main__":
     asyncio.get_event_loop().run_until_complete(print_brightness())
@@ -161,7 +161,7 @@ async def print_if_auth_required():
 
     result = await hc.async_is_auth_required()
     print("Result: %s" % result)
-
+    await hyperion_client.async_client_disconnect()
 
 asyncio.get_event_loop().run_until_complete(print_if_auth_required())
 ```
