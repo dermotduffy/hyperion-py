@@ -383,7 +383,7 @@ Output:
 Brightness: 59%
 ```
 
-## Exceptions
+## Exceptions / Errors 
 
 ### Philosophy
 
@@ -405,6 +405,17 @@ automatically manage it in an incremental fashion), or if specified manually,
 it is the caller's responsibility to ensure no two simultaneous calls share a
 `tan` (as otherwise the client would not be able to match the call to the
 response, and this exception will be raised automatically prior to the call).
+
+### "Task was destroyed but it is pending!"
+
+If a `HyperionClient` object is connected but destroyed prior to disconnection, a warning message may be printed ("Task was destroyed but it is pending!"). To avoid this, ensure to always call `async_client_disconnect` prior to destruction of a connected client. Alternatively use the async context manager:
+
+```
+async with client.HyperionClient(TEST_HOST, TEST_PORT) as hc:
+    if not hc:
+        return
+    ...
+```
 
 <a name="timeouts"></a>
 ## Timeouts
