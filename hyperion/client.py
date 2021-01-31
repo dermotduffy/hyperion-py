@@ -3,6 +3,7 @@
 
 import asyncio
 import collections
+import collections.abc
 import copy
 import functools
 import inspect
@@ -23,6 +24,7 @@ from typing import (
     Dict,
     Iterable,
     List,
+    Mapping,
     Optional,
     Type,
     Union,
@@ -96,7 +98,7 @@ class HyperionClient:
             Union[HyperionCallback, Iterable[HyperionCallback]]
         ] = None,
         callbacks: Optional[
-            Dict[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
+            Mapping[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
         ] = None,
         token: Optional[str] = None,
         instance: int = const.DEFAULT_INSTANCE,
@@ -212,7 +214,7 @@ class HyperionClient:
     def set_callbacks(
         self,
         callbacks: Optional[
-            Dict[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
+            Mapping[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
         ],
     ) -> None:
         """Set update callbacks."""
@@ -226,7 +228,7 @@ class HyperionClient:
 
     def add_callbacks(
         self,
-        callbacks: Dict[str, Union[HyperionCallback, Iterable[HyperionCallback]]],
+        callbacks: Mapping[str, Union[HyperionCallback, Iterable[HyperionCallback]]],
     ) -> None:
         """Add update callbacks."""
         if not callbacks:
@@ -238,7 +240,7 @@ class HyperionClient:
 
     def remove_callbacks(
         self,
-        callbacks: Dict[str, Union[HyperionCallback, Iterable[HyperionCallback]]],
+        callbacks: Mapping[str, Union[HyperionCallback, Iterable[HyperionCallback]]],
     ) -> None:
         """Add update callbacks."""
         if not callbacks:
