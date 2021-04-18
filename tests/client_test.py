@@ -8,9 +8,9 @@ import os
 import string
 from typing import Any, Dict, List, Optional, Tuple
 import unittest
+from unittest.mock import Mock, call, patch
 
 from asynctest import ClockedTestCase, helpers
-from asynctest.mock import Mock, call, patch
 
 from hyperion import client, const
 
