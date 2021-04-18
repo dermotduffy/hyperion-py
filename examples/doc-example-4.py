@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 """Simple Threaded Hyperion client demonstration."""
 
 from hyperion import client, const

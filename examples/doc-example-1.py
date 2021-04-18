@@ -1,19 +1,23 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 """Simple Hyperion client read demonstration."""
 
 import asyncio
+
 from hyperion import client, const
 
 HOST = "hyperion"
 
 
-async def print_brightness():
+async def print_brightness() -> None:
     """Print Hyperion brightness."""
 
-    hyperion_client = client.HyperionClient(HOST)
-    if not await hyperion_client.async_client_connect():
-        return
-    print("Brightness: %i%%" % hyperion_client.adjustment[0][const.KEY_BRIGHTNESS])
+    async with client.HyperionClient(HOST) as hyperion_client:
+        assert hyperion_client
+
+        adjustment = hyperion_client.adjustment
+        assert adjustment
+
+        print("Brightness: %i%%" % adjustment[0][const.KEY_BRIGHTNESS])
 
 
 if __name__ == "__main__":

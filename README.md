@@ -100,23 +100,27 @@ documentation](https://docs.hyperion-project.org/en/json/).
 ## Example usage:
 
 ```python
-#!/usr/bin/python
+#!/usr/bin/env python
 """Simple Hyperion client read demonstration."""
 
 import asyncio
+
 from hyperion import client, const
 
 HOST = "hyperion"
 
 
-async def print_brightness():
+async def print_brightness() -> None:
     """Print Hyperion brightness."""
 
-    hyperion_client = client.HyperionClient(HOST)
-    if not await hyperion_client.async_client_connect():
-        return
-    print("Brightness: %i%%" % hyperion_client.adjustment[0][const.KEY_BRIGHTNESS])
-    await hyperion_client.async_client_disconnect()
+    async with client.HyperionClient(HOST) as hyperion_client:
+        assert hyperion_client
+
+        adjustment = hyperion_client.adjustment
+        assert adjustment
+
+        print("Brightness: %i%%" % adjustment[0][const.KEY_BRIGHTNESS])
+
 
 if __name__ == "__main__":
     asyncio.get_event_loop().run_until_complete(print_brightness())
@@ -144,16 +148,17 @@ subscription updates.
 #### Example: Waiting for a response
 
 ```python
-#!/usr/bin/python
+#!/usr/bin/env python
 """Simple Hyperion client request demonstration."""
 
 import asyncio
+
 from hyperion import client
 
 HOST = "hyperion"
 
 
-async def print_if_auth_required():
+async def print_if_auth_required() -> None:
     """Print whether auth is required."""
 
     hc = client.HyperionClient(HOST)
@@ -161,7 +166,9 @@ async def print_if_auth_required():
 
     result = await hc.async_is_auth_required()
     print("Result: %s" % result)
-    await hyperion_client.async_client_disconnect()
+
+    await hc.async_client_disconnect()
+
 
 asyncio.get_event_loop().run_until_complete(print_if_auth_required())
 ```
@@ -178,37 +185,38 @@ A slightly more complex example that sends commands (clears the Hyperion source
 select at a given priority, then sets color at that same priority).
 
 ```python
-#!/usr/bin/python
+#!/usr/bin/env python
 """Simple Hyperion client request demonstration."""
 
 import asyncio
 import logging
 import sys
+
 from hyperion import client
 
 HOST = "hyperion"
 PRIORITY = 20
 
 
-async def set_color():
+async def set_color() -> None:
     """Set red color on Hyperion."""
 
-    hc = client.HyperionClient(HOST)
+    async with client.HyperionClient(HOST) as hc:
+        assert hc
 
-    if not await hc.async_client_connect():
-        logging.error("Could not connect to: %s", HOST)
-        return
+        if not await hc.async_client_connect():
+            logging.error("Could not connect to: %s", HOST)
+            return
 
-    if not client.ResponseOK(
-        await hc.async_clear(priority=PRIORITY)
-    ) or not client.ResponseOK(
-        await hc.async_set_color(
-            color=[255, 0, 0], priority=PRIORITY, origin=sys.argv[0]
-        )
-    ):
-        logging.error("Could not clear/set_color on: %s", HOST)
-        return
-    await hc.async_client_disconnect()
+        if not client.ResponseOK(
+            await hc.async_clear(priority=PRIORITY)
+        ) or not client.ResponseOK(
+            await hc.async_set_color(
+                color=[255, 0, 0], priority=PRIORITY, origin=sys.argv[0]
+            )
+        ):
+            logging.error("Could not clear/set_color on: %s", HOST)
+            return
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -222,45 +230,47 @@ then switch to it. Uses [callbacks](#callbacks), discussed below.
 
 
 ```python
-#!/usr/bin/python
+#!/usr/bin/env python
 """Simple Hyperion client request demonstration."""
+
+from __future__ import annotations
 
 import asyncio
 import logging
 import sys
+from typing import Any
+
 from hyperion import client
 
 HOST = "hyperion"
 PRIORITY = 20
 
 
-async def instance_start_and_switch():
+async def instance_start_and_switch() -> None:
     """Wait for an instance to start."""
 
     instance_ready = asyncio.Event()
 
-    def instance_update(json):
+    def instance_update(json: dict[str, Any]) -> None:
         for data in json["data"]:
             if data["instance"] == 1 and data["running"]:
                 instance_ready.set()
 
-    hc = client.HyperionClient(HOST, callbacks={"instance-update": instance_update})
+    async with client.HyperionClient(
+        HOST, callbacks={"instance-update": instance_update}
+    ) as hc:
+        assert hc
 
-    if not await hc.async_client_connect():
-        logging.error("Could not connect to: %s", HOST)
-        return
+        if not client.ResponseOK(await hc.async_start_instance(instance=1)):
+            logging.error("Could not start instance on: %s", HOST)
+            return
 
-    if not client.ResponseOK(await hc.async_start_instance(instance=1)):
-        logging.error("Could not start instance on: %s", HOST)
-        return
+        # Blocks waiting for the instance to start.
+        await instance_ready.wait()
 
-    # Blocks waiting for the instance to start.
-    await instance_ready.wait()
-
-    if not client.ResponseOK(await hc.async_switch_instance(instance=1)):
-        logging.error("Could not switch instance on: %s", HOST)
-        return
-    await hc.async_client_disconnect()
+        if not client.ResponseOK(await hc.async_switch_instance(instance=1)):
+            logging.error("Could not switch instance on: %s", HOST)
+            return
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -298,25 +308,34 @@ This can be used to take special action as the client connects or disconnects fr
 #### Example: Callbacks
 
 ```python
-#!/usr/bin/python
+#!/usr/bin/env python
 """Simple Hyperion client callback demonstration."""
 
+from __future__ import annotations
+
 import asyncio
+from typing import Any
+
 from hyperion import client
 
 HOST = "hyperion"
 
 
-def callback(json):
+def callback(json: dict[str, Any]) -> None:
     """Sample callback function."""
 
     print("Received Hyperion callback: %s" % json)
 
 
+async def show_callback() -> None:
+    """Show a default callback is called."""
+
+    async with client.HyperionClient(HOST, default_callback=callback):
+        pass
+
+
 if __name__ == "__main__":
-    hyperion_client = client.HyperionClient(HOST, default_callback=callback)
-    asyncio.get_event_loop().run_until_complete(hyperion_client.async_client_connect())
-    asyncio.get_event_loop().run_forever()
+    asyncio.get_event_loop().run_until_complete(show_callback())
 ```
 
 Output, showing the progression of connection stages:
@@ -346,7 +365,7 @@ with it. This method call will block the caller until the client has been initia
 ### Example use of Threaded client
 
 ```python
-#!/usr/bin/python
+#!/usr/bin/env python
 """Simple Threaded Hyperion client demonstration."""
 
 from hyperion import client, const
