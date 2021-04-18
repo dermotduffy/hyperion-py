@@ -1,5 +1,5 @@
 <img src="images/hyperion-logo.png"
-     alt="motionEye icon"
+     alt="Hyperion logo"
      width="25%"
      align="right"
      style="float: right; margin: 10px 0px 20px 20px;" />
