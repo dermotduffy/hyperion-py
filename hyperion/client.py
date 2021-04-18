@@ -16,7 +16,6 @@ from types import TracebackType
 
 # pylint: disable=unused-import
 from typing import (
-    cast,
     Any,
     Awaitable,
     Callable,
@@ -28,6 +27,7 @@ from typing import (
     Optional,
     Type,
     Union,
+    cast,
 )
 
 from hyperion import const
