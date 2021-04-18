@@ -1,6 +1,6 @@
 <img src="images/hyperion-logo.png"
      alt="Hyperion logo"
-     width="25%"
+     width="20%"
      align="right"
      style="float: right; margin: 10px 0px 20px 20px;" />
      
