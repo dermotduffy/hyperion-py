@@ -1,3 +1,9 @@
+<img src="images/hyperion-logo.png"
+     alt="motionEye icon"
+     width="25%"
+     align="right"
+     style="float: right; margin: 10px 0px 20px 20px;" />
+     
 [![PyPi](https://img.shields.io/pypi/v/hyperion-py.svg)](https://pypi.org/project/hyperion-py/)
 [![PyPi](https://img.shields.io/pypi/pyversions/hyperion-py.svg)](https://pypi.org/project/hyperion-py/)
 [![Build Status](https://img.shields.io/github/workflow/status/dermotduffy/hyperion-py/Build?style=flat-square)](https://github.com/dermotduffy/hyperion-py/actions/workflows/build.yaml)
