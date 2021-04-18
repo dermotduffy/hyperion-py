@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import unittest
 from unittest.mock import Mock, call, patch
 
-from asynctest import ClockedTestCase, helpers
+from asynctest import ClockedTestCase
 
 from hyperion import client, const
 
@@ -78,6 +78,12 @@ def _read_file(filename: str) -> Any:
     with open(_get_test_filepath(filename)) as handle:
         data = handle.read()
     return json.loads(data)
+
+
+async def _exhaust_callbacks(loop: asyncio.BaseEventLoop) -> None:
+    """Run the loop until all ready callbacks are executed."""
+    while loop._ready:  # type: ignore[attr-defined]
+        await asyncio.sleep(0, loop=loop)
 
 
 class MockStreamReaderWriter:
@@ -289,7 +295,7 @@ class AsyncHyperionClientTestCase(ClockedTestCase):  # type: ignore[misc]
         if additional_wait_secs:
             await self.advance(additional_wait_secs)
         await rw.block_until_flow_empty()
-        await helpers.exhaust_callbacks(self.loop)
+        await _exhaust_callbacks(self.loop)
 
     async def _disconnect_and_assert_finished(
         self, rw: MockStreamReaderWriter, hc: client.HyperionClient
