@@ -1,11 +1,5 @@
 [![PyPi](https://img.shields.io/pypi/v/hyperion-py.svg)](https://pypi.org/project/hyperion-py/)
 [![PyPi](https://img.shields.io/pypi/pyversions/hyperion-py.svg)](https://pypi.org/project/hyperion-py/)
-[![Build Status](https://travis-ci.com/dermotduffy/hyperion-py.svg?branch=master)](https://travis-ci.com/dermotduffy/hyperion-py)
-[![Coverage](https://img.shields.io/codecov/c/github/dermotduffy/hyperion-py)](https://codecov.io/gh/dermotduffy/hyperion-py)
-
-
-[![PyPi](https://img.shields.io/pypi/v/hyperion-py.svg)](https://pypi.org/project/hyperion-py/)
-[![PyPi](https://img.shields.io/pypi/pyversions/hyperion-py.svg)](https://pypi.org/project/hyperion-py/)
 [![Build Status](https://img.shields.io/github/workflow/status/dermotduffy/hyperion-py/Build?style=flat-square)](https://github.com/dermotduffy/hyperion-py/actions/workflows/build.yaml)
 [![Test Coverage](https://img.shields.io/codecov/c/gh/dermotduffy/hyperion-py?style=flat-square)](https://codecov.io/gh/dermotduffy/hyperion-py)
 [![License](https://img.shields.io/github/license/dermotduffy/hyperion-py.svg?style=flat-square)](LICENSE)
