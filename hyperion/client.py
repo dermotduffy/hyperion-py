@@ -1,6 +1,8 @@
 #!/usr/bin/python
 """Client for Hyperion servers."""
 
+from __future__ import annotations
+
 import asyncio
 import collections
 import collections.abc
@@ -20,11 +22,8 @@ from typing import (
     Awaitable,
     Callable,
     Coroutine,
-    Dict,
     Iterable,
-    List,
     Mapping,
-    Optional,
     Type,
     Union,
     cast,
@@ -35,8 +34,8 @@ from hyperion import const
 _LOGGER = logging.getLogger(__name__)
 
 HyperionCallback = Union[
-    Callable[[Dict[str, Any]], Awaitable[None]],
-    Callable[[Dict[str, Any]], None],
+    Callable[[dict[str, Any]], Awaitable[None]],
+    Callable[[dict[str, Any]], None],
 ]
 
 
@@ -51,9 +50,9 @@ class HyperionClientTanNotAvailable(HyperionError):
 class HyperionClientState:
     """Class representing the Hyperion client state."""
 
-    def __init__(self, state: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(self, state: dict[str, Any] | None = None) -> None:
         """Initialize state object."""
-        self._state: Dict[str, Any] = state or {}
+        self._state: dict[str, Any] = state or {}
         self._dirty: bool = False
 
     @property
@@ -76,12 +75,12 @@ class HyperionClientState:
             self._state[key] = new_value
             self._dirty = True
 
-    def update(self, new_values: Dict[str, Any]) -> None:
+    def update(self, new_values: dict[str, Any]) -> None:
         """Update the state with a dict of values."""
         for key in new_values:
             self.set(key, new_values[key])
 
-    def get_all(self) -> Dict[str, Any]:
+    def get_all(self) -> dict[str, Any]:
         """Get a copy of all the state values."""
         return copy.copy(self._state)
 
@@ -94,13 +93,11 @@ class HyperionClient:
         self,
         host: str,
         port: int = const.DEFAULT_PORT_JSON,
-        default_callback: Optional[
-            Union[HyperionCallback, Iterable[HyperionCallback]]
-        ] = None,
-        callbacks: Optional[
-            Mapping[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
-        ] = None,
-        token: Optional[str] = None,
+        default_callback: Union[HyperionCallback, Iterable[HyperionCallback]]
+        | None = None,
+        callbacks: Mapping[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
+        | None = None,
+        token: str | None = None,
         instance: int = const.DEFAULT_INSTANCE,
         origin: str = const.DEFAULT_ORIGIN,
         timeout_secs: float = const.DEFAULT_TIMEOUT_SECS,
@@ -110,10 +107,10 @@ class HyperionClient:
         """Initialize client."""
         _LOGGER.debug("HyperionClient initiated with: (%s:%i)", host, port)
 
-        self._callbacks: Dict[str, List[HyperionCallback]] = {}
+        self._callbacks: dict[str, list[HyperionCallback]] = {}
         self.set_callbacks(callbacks or {})
 
-        self._default_callback: List[HyperionCallback] = []
+        self._default_callback: list[HyperionCallback] = []
         self.set_default_callback(default_callback or [])
 
         self._host = host
@@ -125,20 +122,20 @@ class HyperionClient:
         self._retry_secs = retry_secs
         self._raw_connection = raw_connection
 
-        self._serverinfo: Optional[Dict[str, Any]] = None
+        self._serverinfo: dict[str, Any] | None = None
 
-        self._receive_task: Optional[asyncio.Task[None]] = None
-        self._maintenance_task: Optional[asyncio.Task[None]] = None
+        self._receive_task: asyncio.Task[None] | None = None
+        self._maintenance_task: asyncio.Task[None] | None = None
         self._maintenance_event: asyncio.Event = asyncio.Event()
 
-        self._reader: Optional[asyncio.StreamReader] = None
-        self._writer: Optional[asyncio.StreamWriter] = None
+        self._reader: asyncio.StreamReader | None = None
+        self._writer: asyncio.StreamWriter | None = None
 
         # Start tan @ 1, as the zeroth tan is used by default.
         self._tan_cv = asyncio.Condition()
         self._tan_counter = 1
-        self._tan_responses: Dict[
-            int, Optional[Dict[str, Any]]
+        self._tan_responses: dict[
+            int, dict[str, Any] | None
         ] = collections.OrderedDict()
 
         self._client_state: HyperionClientState = HyperionClientState(
@@ -150,16 +147,16 @@ class HyperionClient:
             }
         )
 
-    async def __aenter__(self) -> Optional["HyperionClient"]:
+    async def __aenter__(self) -> "HyperionClient" | None:
         """Enter context manager and connect the client."""
         result = await self.async_client_connect()
         return self if result else None
 
     async def __aexit__(
         self,
-        exc_type: Optional[Type[BaseException]],
-        exc: Optional[BaseException],
-        traceback: Optional[TracebackType],
+        exc_type: Type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
     ) -> None:
         """Leave context manager and disconnect the client."""
         await self.async_client_disconnect()
@@ -181,9 +178,9 @@ class HyperionClient:
     @classmethod
     def _set_or_add_callbacks(
         cls,
-        callbacks: Optional[Union[HyperionCallback, Iterable[HyperionCallback]]],
+        callbacks: Union[HyperionCallback, Iterable[HyperionCallback]] | None,
         add: bool,
-        target: List[HyperionCallback],
+        target: list[HyperionCallback],
     ) -> None:
         """Set or add a single or list of callbacks."""
         if callbacks is not None and not isinstance(
@@ -199,7 +196,7 @@ class HyperionClient:
     def _remove_callbacks(
         cls,
         callbacks: Union[HyperionCallback, Iterable[HyperionCallback]],
-        target: List[HyperionCallback],
+        target: list[HyperionCallback],
     ) -> None:
         """Set or add a single or list of callbacks."""
         if not callbacks:
@@ -213,9 +210,8 @@ class HyperionClient:
 
     def set_callbacks(
         self,
-        callbacks: Optional[
-            Mapping[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
-        ],
+        callbacks: Mapping[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
+        | None,
     ) -> None:
         """Set update callbacks."""
         if not callbacks:
@@ -252,7 +248,7 @@ class HyperionClient:
 
     def set_default_callback(
         self,
-        default_callback: Optional[Union[HyperionCallback, Iterable[HyperionCallback]]],
+        default_callback: Union[HyperionCallback, Iterable[HyperionCallback]] | None,
     ) -> None:
         """Set the default callbacks."""
         HyperionClient._set_or_add_callbacks(
@@ -275,7 +271,7 @@ class HyperionClient:
         """Set the default callbacks."""
         HyperionClient._remove_callbacks(default_callback, self._default_callback)
 
-    async def _call_callbacks(self, command: str, arg: Dict[str, Any]) -> None:
+    async def _call_callbacks(self, command: str, arg: dict[str, Any]) -> None:
         """Call the relevant callbacks for the given command."""
         callbacks = self._callbacks.get(command, self._default_callback)
         for callback in callbacks:
@@ -299,9 +295,10 @@ class HyperionClient:
         return bool(self._client_state.get(const.KEY_LOGGED_IN))
 
     @property
-    def instance(self) -> Optional[int]:
+    def instance(self) -> int | None:
         """Return server instance."""
-        return cast(Optional[int], self._client_state.get(const.KEY_INSTANCE))
+        instance: int | None = self._client_state.get(const.KEY_INSTANCE)
+        return instance
 
     @property
     def target_instance(self) -> int:
@@ -314,7 +311,7 @@ class HyperionClient:
         return bool(self._client_state.get(const.KEY_LOADED_STATE))
 
     @property
-    def client_state(self) -> Dict[str, Any]:
+    def client_state(self) -> dict[str, Any]:
         """Return client state."""
         return self._client_state.get_all()
 
@@ -448,7 +445,7 @@ class HyperionClient:
         await self._await_or_stop_task(receive_task, stop_task=True)
         return not error
 
-    async def _async_send_json(self, request: Dict[str, Any]) -> bool:
+    async def _async_send_json(self, request: dict[str, Any]) -> bool:
         """Send JSON to the server."""
         if not self._writer:
             return False
@@ -470,7 +467,7 @@ class HyperionClient:
     # pylint: disable=too-many-return-statements
     async def _async_safely_read_command(
         self, use_timeout: bool = True
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Safely read a command from the stream."""
         if not self._reader:
             return None
@@ -527,7 +524,7 @@ class HyperionClient:
                 const.KEY_COMMAND,
             )
             return None
-        return cast(Dict[str, Any], resp_json)
+        return cast(dict[str, Any], resp_json)
 
     async def _maintenance_task_loop(self) -> None:
         try:
@@ -566,7 +563,7 @@ class HyperionClient:
             pass
 
     async def _await_or_stop_task(
-        self, task: "Optional[asyncio.Task[Any]]", stop_task: bool = False
+        self, task: "asyncio.Task[Any] | None", stop_task: bool = False
     ) -> bool:
         """Await task, optionally stopping it first.
 
@@ -714,7 +711,7 @@ class HyperionClient:
         await self._handle_response_for_caller(resp_json)
         return True
 
-    async def _handle_response_for_caller(self, resp_json: Dict[str, Any]) -> None:
+    async def _handle_response_for_caller(self, resp_json: dict[str, Any]) -> None:
         """Handle a server response for a caller."""
 
         tan = resp_json.get(const.KEY_TAN)
@@ -744,17 +741,17 @@ class HyperionClient:
     @classmethod
     def _set_data(
         cls,
-        data: Dict[Any, Any],
-        hard: Optional[Dict[Any, Any]] = None,
-        soft: Optional[Dict[Any, Any]] = None,
-    ) -> Dict[Any, Any]:
+        data: dict[Any, Any],
+        hard: dict[Any, Any] | None = None,
+        soft: dict[Any, Any] | None = None,
+    ) -> dict[Any, Any]:
         """Override the data in the dictionary selectively."""
         output = soft or {}
         output.update(data)
         output.update(hard or {})
         return output
 
-    async def _reserve_tan_slot(self, tan: Optional[int] = None) -> int:
+    async def _reserve_tan_slot(self, tan: int | None = None) -> int:
         """Increment and return the next tan to use."""
         async with self._tan_cv:
             if tan is None:
@@ -780,7 +777,7 @@ class HyperionClient:
 
     async def _wait_for_tan_response(
         self, tan: int, timeout_secs: float
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Wait for a response to arrive."""
         await self._tan_cv.acquire()
         try:
@@ -817,7 +814,7 @@ class HyperionClient:
             self._timeout_secs = timeout_secs
 
         def _extract_timeout_secs(
-            self, hyperion_client: "HyperionClient", data: Dict[str, Any]
+            self, hyperion_client: "HyperionClient", data: dict[str, Any]
         ) -> float:
             """Return the timeout value for a call.
 
@@ -839,7 +836,7 @@ class HyperionClient:
 
         async def __call__(
             self, hyperion_client: "HyperionClient", *args: Any, **kwargs: Any
-        ) -> Optional[Dict[str, Any]]:
+        ) -> dict[str, Any] | None:
             """Call the wrapper."""
             # The receive task should never be executing a call that uses the
             # AwaitResponseWrapper (as the response is itself handled by the receive
@@ -861,7 +858,7 @@ class HyperionClient:
 
         def __get__(
             self, instance: "HyperionClient", instancetype: Type["HyperionClient"]
-        ) -> "functools.partial[Coroutine[Any, Any, Optional[Dict[str, Any]]]]":
+        ) -> "functools.partial[Coroutine[Any, Any, dict[str, Any] | None]]":
             """Return a partial call that uses the correct 'self'."""
             # Need to ensure __call__ receives the 'correct' outer
             # 'self', which is 'instance' in this function.
@@ -974,11 +971,11 @@ class HyperionClient:
     # ================
 
     @property
-    def adjustment(self) -> Optional[List[Dict[str, Any]]]:
+    def adjustment(self) -> list[dict[str, Any]] | None:
         """Return adjustment."""
         return self._get_serverinfo_value(const.KEY_ADJUSTMENT)
 
-    def _update_adjustment(self, adjustment: Optional[List[Dict[str, Any]]]) -> None:
+    def _update_adjustment(self, adjustment: list[dict[str, Any]] | None) -> None:
         """Update adjustment."""
         if (
             self._serverinfo is None
@@ -1035,11 +1032,11 @@ class HyperionClient:
     # ==================================================================================
 
     @property
-    def components(self) -> Optional[List[Dict[str, Any]]]:
+    def components(self) -> list[dict[str, Any]] | None:
         """Return components."""
         return self._get_serverinfo_value(const.KEY_COMPONENTS)
 
-    def _update_component(self, new_component: Dict[str, Any]) -> None:
+    def _update_component(self, new_component: dict[str, Any]) -> None:
         """Update full Hyperion state."""
         if (
             self._serverinfo is None
@@ -1072,7 +1069,7 @@ class HyperionClient:
 
     def is_on(
         self,
-        components: Optional[List[str]] = None,
+        components: list[str] | None = None,
     ) -> bool:
         """Determine if components are on."""
         if components is None:
@@ -1104,11 +1101,11 @@ class HyperionClient:
     # ==================================================================================
 
     @property
-    def effects(self) -> Optional[List[Dict[str, Any]]]:
+    def effects(self) -> list[dict[str, Any]] | None:
         """Return effects."""
         return self._get_serverinfo_value(const.KEY_EFFECTS)
 
-    def _update_effects(self, effects: List[Dict[str, Any]]) -> None:
+    def _update_effects(self, effects: list[dict[str, Any]] | None) -> None:
         """Update effects."""
         if self._serverinfo is None or not isinstance(effects, list):
             return
@@ -1181,11 +1178,11 @@ class HyperionClient:
     # =================================================================================
 
     @property
-    def instances(self) -> Optional[List[Dict[str, Any]]]:
+    def instances(self) -> list[dict[str, Any]] | None:
         """Return instances."""
         return self._get_serverinfo_value(const.KEY_INSTANCE)
 
-    def _update_instances(self, instances: List[Dict[str, Any]]) -> None:
+    def _update_instances(self, instances: list[dict[str, Any]] | None) -> None:
         """Update instances."""
         if self._serverinfo is None or not isinstance(instances, list):
             return
@@ -1237,11 +1234,11 @@ class HyperionClient:
     # =============================================================================
 
     @property
-    def leds(self) -> Optional[List[Dict[str, Any]]]:
+    def leds(self) -> list[dict[str, Any]] | None:
         """Return LEDs."""
         return self._get_serverinfo_value(const.KEY_LEDS)
 
-    def _update_leds(self, leds: List[Dict[str, Any]]) -> None:
+    def _update_leds(self, leds: list[dict[str, Any]] | None) -> None:
         """Update LEDs."""
         if self._serverinfo is None or not isinstance(leds, list):
             return
@@ -1256,7 +1253,7 @@ class HyperionClient:
     # =================================================================================
 
     @property
-    def led_mapping_type(self) -> Optional[str]:
+    def led_mapping_type(self) -> str | None:
         """Return LED mapping type."""
         return self._get_serverinfo_value(const.KEY_LED_MAPPING_TYPE)
 
@@ -1314,18 +1311,18 @@ class HyperionClient:
     # =================================================================================
 
     @property
-    def priorities(self) -> Optional[List[Dict[str, Any]]]:
+    def priorities(self) -> list[dict[str, Any]] | None:
         """Return priorites."""
         return self._get_serverinfo_value(const.KEY_PRIORITIES)
 
-    def _update_priorities(self, priorities: List[Dict[str, Any]]) -> None:
+    def _update_priorities(self, priorities: list[dict[str, Any]]) -> None:
         """Update priorites."""
         if self._serverinfo is None or not isinstance(priorities, list):
             return
         self._serverinfo[const.KEY_PRIORITIES] = priorities
 
     @property
-    def visible_priority(self) -> Optional[Dict[str, Any]]:
+    def visible_priority(self) -> dict[str, Any] | None:
         """Return the visible priority, if any."""
         # The visible priority is supposed to be the first returned by the
         # API, but due to a bug the ordering is incorrect search for it
@@ -1344,7 +1341,7 @@ class HyperionClient:
     # =================================================================================
 
     @property
-    def priorities_autoselect(self) -> Optional[bool]:
+    def priorities_autoselect(self) -> bool | None:
         """Return priorites."""
         return self._get_serverinfo_value(const.KEY_PRIORITIES_AUTOSELECT)
 
@@ -1370,11 +1367,11 @@ class HyperionClient:
     # ================================================================================
 
     @property
-    def sessions(self) -> Optional[List[Dict[str, Any]]]:
+    def sessions(self) -> list[dict[str, Any]] | None:
         """Return sessions."""
         return self._get_serverinfo_value(const.KEY_SESSIONS)
 
-    def _update_sessions(self, sessions: List[Dict[str, Any]]) -> None:
+    def _update_sessions(self, sessions: list[dict[str, Any]]) -> None:
         """Update sessions."""
         if self._serverinfo is None or not isinstance(sessions, list):
             return
@@ -1386,15 +1383,15 @@ class HyperionClient:
     # =====================================================================
 
     @property
-    def serverinfo(self) -> Optional[Dict[str, Any]]:
+    def serverinfo(self) -> dict[str, Any] | None:
         """Return current serverinfo."""
         return self._serverinfo
 
-    def _update_serverinfo(self, state: Optional[Dict[str, Any]]) -> None:
+    def _update_serverinfo(self, state: dict[str, Any] | None) -> None:
         """Update full Hyperion state."""
         self._serverinfo = state
 
-    def _get_serverinfo_value(self, key: str) -> Optional[Any]:
+    def _get_serverinfo_value(self, key: str) -> Any | None:
         """Get a value from serverinfo structure given key."""
         if not self._serverinfo:
             return None
@@ -1434,7 +1431,7 @@ class HyperionClient:
     # ==================================================================================
 
     @property
-    def videomode(self) -> Optional[str]:
+    def videomode(self) -> str | None:
         """Return videomode."""
         return self._get_serverinfo_value(const.KEY_VIDEOMODE)
 
@@ -1467,7 +1464,7 @@ class HyperionClient:
 
     async_sysinfo = AwaitResponseWrapper(async_send_sysinfo)
 
-    async def async_sysinfo_id(self) -> Optional[str]:
+    async def async_sysinfo_id(self) -> str | None:
         """Return an ID representing this Hyperion server."""
         sysinfo = await self.async_sysinfo()
         if sysinfo is not None and ResponseOK(sysinfo):
@@ -1481,7 +1478,7 @@ class HyperionClient:
             return str(sysinfo_id)
         return None
 
-    async def async_sysinfo_version(self) -> Optional[str]:
+    async def async_sysinfo_version(self) -> str | None:
         """Return the Hyperion server version."""
         sysinfo = await self.async_sysinfo()
         if sysinfo is not None and ResponseOK(sysinfo):
@@ -1504,13 +1501,11 @@ class ThreadedHyperionClient(threading.Thread):
         self,
         host: str,
         port: int = const.DEFAULT_PORT_JSON,
-        default_callback: Optional[
-            Union[HyperionCallback, Iterable[HyperionCallback]]
-        ] = None,
-        callbacks: Optional[
-            Dict[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
-        ] = None,
-        token: Optional[str] = None,
+        default_callback: Union[HyperionCallback, Iterable[HyperionCallback]]
+        | None = None,
+        callbacks: dict[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
+        | None = None,
+        token: str | None = None,
         instance: int = const.DEFAULT_INSTANCE,
         origin: str = const.DEFAULT_ORIGIN,
         timeout_secs: float = const.DEFAULT_TIMEOUT_SECS,
@@ -1520,7 +1515,7 @@ class ThreadedHyperionClient(threading.Thread):
         """Initialize client."""
         super().__init__()
         self._loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
-        self._hyperion_client: Optional[HyperionClient] = None
+        self._hyperion_client: HyperionClient | None = None
 
         self._client_init_call: Callable[[], HyperionClient] = lambda: HyperionClient(
             host,
@@ -1608,9 +1603,9 @@ class ResponseOK:
 
     def __init__(
         self,
-        response: Optional[Dict[str, Any]],
-        cmd: Optional[str] = None,
-        validators: Optional[List[Callable[[Dict[str, Any]], bool]]] = None,
+        response: dict[str, Any] | None,
+        cmd: str | None = None,
+        validators: list[Callable[[dict[str, Any]], bool]] | None = None,
     ):
         """Initialize a Response object."""
         self._response = response
@@ -1636,7 +1631,7 @@ class ResponseOK:
 class ServerInfoResponseOK(ResponseOK):
     """Wrapper class for ServerInfo responses."""
 
-    def __init__(self, response: Optional[Dict[str, Any]]):
+    def __init__(self, response: dict[str, Any] | None):
         """Initialize the wrapper class."""
         super().__init__(
             response,
@@ -1648,7 +1643,7 @@ class ServerInfoResponseOK(ResponseOK):
 class LoginResponseOK(ResponseOK):
     """Wrapper class for LoginResponse."""
 
-    def __init__(self, response: Optional[Dict[str, Any]]):
+    def __init__(self, response: dict[str, Any] | None):
         """Initialize the wrapper class."""
         super().__init__(response, cmd=const.KEY_AUTHORIZE_LOGIN)
 
@@ -1656,7 +1651,7 @@ class LoginResponseOK(ResponseOK):
 class SwitchInstanceResponseOK(ResponseOK):
     """Wrapper class for SwitchInstanceResponse."""
 
-    def __init__(self, response: Optional[Dict[str, Any]]):
+    def __init__(self, response: dict[str, Any] | None):
         """Initialize the wrapper class."""
         super().__init__(
             response,

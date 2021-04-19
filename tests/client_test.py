@@ -1,5 +1,7 @@
 #!/usr/bin/python
 """Test for the Hyperion Client."""
+from __future__ import annotations
+
 import asyncio
 from dataclasses import dataclass
 import inspect
@@ -7,7 +9,7 @@ import json
 import logging
 import os
 import string
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, cast
+from typing import Any, AsyncGenerator, cast
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -90,15 +92,15 @@ async def _exhaust_callbacks(loop: asyncio.AbstractEventLoop) -> None:
 class MockStreamReaderWriter:
     """A simple mocl StreamReader and StreamWriter."""
 
-    def __init__(self, flow: Optional[List[Tuple[str, Any]]] = None) -> None:
+    def __init__(self, flow: list[tuple[str, Any]] | None = None) -> None:
         """Initializse the mock."""
         self._flow = flow or []
         self._read_cv = asyncio.Condition()
         self._write_cv = asyncio.Condition()
         self._flow_cv = asyncio.Condition()
-        self._data_to_drain: Optional[bytes] = None
+        self._data_to_drain: bytes | None = None
 
-    async def add_flow(self, flow: List[Tuple[str, Any]]) -> None:
+    async def add_flow(self, flow: list[tuple[str, Any]]) -> None:
         """Add expected calls to the flow."""
         async with self._flow_cv:
             self._flow.extend(flow)
@@ -142,7 +144,7 @@ class MockStreamReaderWriter:
             return data.encode("UTF-8")
         return (json.dumps(data, sort_keys=True) + "\n").encode("UTF-8")
 
-    async def _pop_flow(self) -> Tuple[str, Any]:
+    async def _pop_flow(self) -> tuple[str, Any]:
         """Remove an item from the front of the flow and notify."""
         async with self._flow_cv:
             if not self._flow:
@@ -1371,7 +1373,7 @@ async def test_callbacks(
 
     awaitable_json = None
 
-    async def awaitable_callback(arg: Dict[str, Any]) -> None:
+    async def awaitable_callback(arg: dict[str, Any]) -> None:
         nonlocal awaitable_json
         awaitable_json = arg
 
@@ -1496,7 +1498,7 @@ async def test_async_send_request_token(
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
 
     # Test requesting a token.
-    request_token_in: Dict[str, Any] = {
+    request_token_in: dict[str, Any] = {
         "command": "authorize",
         "subcommand": "requestToken",
         "comment": "Test",
@@ -1953,7 +1955,7 @@ async def test_sysinfo(
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
 
     sysinfo_in = {"command": "sysinfo", "tan": 2}
-    sysinfo_out: Dict[str, Any] = {
+    sysinfo_out: dict[str, Any] = {
         **TEST_SYSINFO_RESPONSE,
         "tan": 2,
     }
@@ -1970,7 +1972,7 @@ async def test_sysinfo_id(
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
 
     sysinfo_in = {"command": "sysinfo", "tan": 2}
-    sysinfo_out: Dict[str, Any] = {
+    sysinfo_out: dict[str, Any] = {
         **TEST_SYSINFO_RESPONSE,
         "tan": 2,
     }
@@ -1987,7 +1989,7 @@ async def test_sysinfo_version(
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
 
     sysinfo_in = {"command": "sysinfo", "tan": 2}
-    sysinfo_out: Dict[str, Any] = {
+    sysinfo_out: dict[str, Any] = {
         **TEST_SYSINFO_RESPONSE,
         "tan": 2,
     }
