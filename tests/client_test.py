@@ -82,9 +82,9 @@ def _read_file(filename: str) -> Any:
     return json.loads(data)
 
 
-async def _exhaust_callbacks(loop: asyncio.AbstractEventLoop) -> None:
+async def _exhaust_callbacks(event_loop: asyncio.AbstractEventLoop) -> None:
     """Run the loop until all ready callbacks are executed."""
-    loop = cast(asyncio.BaseEventLoop, loop)
+    loop = cast(asyncio.BaseEventLoop, event_loop)
     while loop._ready:  # type: ignore[attr-defined]
         await asyncio.sleep(0, loop=loop)
 
@@ -304,9 +304,9 @@ class EventLoopClockAdvancer:
 
 
 @pytest.fixture
-def advance_time(loop: asyncio.AbstractEventLoop) -> EventLoopClockAdvancer:
+def advance_time(event_loop: asyncio.AbstractEventLoop) -> EventLoopClockAdvancer:
     """Advance loop time."""
-    return EventLoopClockAdvancer(loop)
+    return EventLoopClockAdvancer(event_loop)
 
 
 async def _block_until_done(rw: MockStreamReaderWriter) -> None:
@@ -344,7 +344,9 @@ async def _create_client_and_connect(
 
 
 @pytest.fixture
-async def rw() -> AsyncGenerator[MockStreamReaderWriter, None]:
+async def rw(
+    event_loop: asyncio.AbstractEventLoop,
+) -> AsyncGenerator[MockStreamReaderWriter, None]:
     """Create a basic connected client object."""
     yield MockStreamReaderWriter(
         [
@@ -364,6 +366,7 @@ class HyperionFixture:
 
 @pytest.fixture
 async def hyperion_fixture(
+    event_loop: asyncio.AbstractEventLoop,
     rw: MockStreamReaderWriter,
 ) -> AsyncGenerator[HyperionFixture, None]:
     """Create a basic connected client object."""
@@ -375,13 +378,15 @@ async def hyperion_fixture(
 
 @pytest.mark.asyncio
 async def test_async_client_connect_success(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test async connection to server."""
 
 
 @pytest.mark.asyncio
-async def test_async_client_connect_failure(loop: asyncio.AbstractEventLoop) -> None:
+async def test_async_client_connect_failure(
+    event_loop: asyncio.AbstractEventLoop,
+) -> None:
     """Test failed connection to server."""
 
     # == Try to connect when the token fails.
@@ -455,7 +460,7 @@ async def test_async_client_connect_failure(loop: asyncio.AbstractEventLoop) -> 
 
 @pytest.mark.asyncio
 async def test_async_client_connect_specified_instance(
-    loop: asyncio.AbstractEventLoop,
+    event_loop: asyncio.AbstractEventLoop,
 ) -> None:
     """Test server connection to specified instance."""
     instance_request = {
@@ -484,7 +489,7 @@ async def test_async_client_connect_specified_instance(
 
 
 @pytest.mark.asyncio
-async def test_async_client_connect_raw(loop: asyncio.AbstractEventLoop) -> None:
+async def test_async_client_connect_raw(event_loop: asyncio.AbstractEventLoop) -> None:
     """Test a raw connection."""
     rw = MockStreamReaderWriter()
     hc = await _create_client_and_connect(
@@ -541,7 +546,7 @@ async def test_async_client_connect_raw(loop: asyncio.AbstractEventLoop) -> None
 
 @pytest.mark.asyncio
 async def test_instance_switch_causes_empty_state(
-    loop: asyncio.AbstractEventLoop, rw: MockStreamReaderWriter
+    event_loop: asyncio.AbstractEventLoop, rw: MockStreamReaderWriter
 ) -> None:
     """Test that an instance will have no state after an instance switch."""
 
@@ -585,7 +590,7 @@ async def test_instance_switch_causes_empty_state(
 
 @pytest.mark.asyncio
 async def test_receive_wrong_data_type(
-    loop: asyncio.AbstractEventLoop, advance_time: EventLoopClockAdvancer
+    event_loop: asyncio.AbstractEventLoop, advance_time: EventLoopClockAdvancer
 ) -> None:
     """Test that receiving the wrong data-type is handled."""
     rw = MockStreamReaderWriter(
@@ -610,7 +615,7 @@ async def test_receive_wrong_data_type(
 
 @pytest.mark.asyncio
 async def test_is_on(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test the client reports correctly on whether components are on."""
     hc = hyperion_fixture.hc
@@ -655,7 +660,7 @@ async def test_is_on(
 
 @pytest.mark.asyncio
 async def test_update_component(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test updating components."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -689,7 +694,7 @@ async def test_update_component(
 
 @pytest.mark.asyncio
 async def test_update_adjustment(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test updating adjustments."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -708,7 +713,7 @@ async def test_update_adjustment(
 
 @pytest.mark.asyncio
 async def test_update_effect_list(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test updating effect list."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -740,7 +745,7 @@ async def test_update_effect_list(
 
 @pytest.mark.asyncio
 async def test_update_priorities(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test updating priorities."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -804,7 +809,7 @@ async def test_update_priorities(
 
 @pytest.mark.asyncio
 async def test_update_instances(
-    loop: asyncio.AbstractEventLoop, rw: MockStreamReaderWriter
+    event_loop: asyncio.AbstractEventLoop, rw: MockStreamReaderWriter
 ) -> None:
     """Test updating instances."""
 
@@ -859,7 +864,7 @@ async def test_update_instances(
 
 @pytest.mark.asyncio
 async def test_update_led_mapping_type(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test updating LED mapping type."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -878,7 +883,7 @@ async def test_update_led_mapping_type(
 
 @pytest.mark.asyncio
 async def test_update_sessions(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test updating sessions."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -906,7 +911,7 @@ async def test_update_sessions(
 
 @pytest.mark.asyncio
 async def test_videomode(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test updating videomode."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -926,7 +931,7 @@ async def test_videomode(
 
 @pytest.mark.asyncio
 async def test_update_leds(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test updating LEDs."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -943,7 +948,7 @@ async def test_update_leds(
 
 @pytest.mark.asyncio
 async def test_async_send_set_color(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test controlling color."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -976,7 +981,7 @@ async def test_async_send_set_color(
 
 @pytest.mark.asyncio
 async def test_async_send_set_effect(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test controlling effect."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -1007,7 +1012,7 @@ async def test_async_send_set_effect(
 
 @pytest.mark.asyncio
 async def test_async_send_set_image(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test controlling image."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -1048,7 +1053,7 @@ async def test_async_send_set_image(
 
 @pytest.mark.asyncio
 async def test_async_send_clear(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test clearing priorities."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -1065,7 +1070,7 @@ async def test_async_send_clear(
 
 @pytest.mark.asyncio
 async def test_async_send_set_adjustment(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test setting adjustment."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -1079,7 +1084,7 @@ async def test_async_send_set_adjustment(
 
 @pytest.mark.asyncio
 async def test_async_send_set_led_mapping_type(
-    loop: asyncio.AbstractEventLoop,
+    event_loop: asyncio.AbstractEventLoop,
     hyperion_fixture: HyperionFixture,
 ) -> None:
     """Test setting adjustment."""
@@ -1097,7 +1102,7 @@ async def test_async_send_set_led_mapping_type(
 
 @pytest.mark.asyncio
 async def test_async_send_set_videomode(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test setting videomode."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -1111,7 +1116,7 @@ async def test_async_send_set_videomode(
 
 @pytest.mark.asyncio
 async def test_async_send_set_component(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test setting component."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -1132,7 +1137,7 @@ async def test_async_send_set_component(
 
 @pytest.mark.asyncio
 async def test_async_send_set_sourceselect(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test setting sourceselect."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -1146,7 +1151,7 @@ async def test_async_send_set_sourceselect(
 
 @pytest.mark.asyncio
 async def test_start_async_send_stop_switch_instance(
-    loop: asyncio.AbstractEventLoop,
+    event_loop: asyncio.AbstractEventLoop,
     hyperion_fixture: HyperionFixture,
 ) -> None:
     """Test starting, stopping and switching instances."""
@@ -1175,7 +1180,7 @@ async def test_start_async_send_stop_switch_instance(
 
 @pytest.mark.asyncio
 async def test_start_async_send_stop_image_stream(
-    loop: asyncio.AbstractEventLoop,
+    event_loop: asyncio.AbstractEventLoop,
     hyperion_fixture: HyperionFixture,
 ) -> None:
     """Test starting and stopping an image stream."""
@@ -1197,7 +1202,7 @@ async def test_start_async_send_stop_image_stream(
 
 @pytest.mark.asyncio
 async def test_async_send_start_stop_led_stream(
-    loop: asyncio.AbstractEventLoop,
+    event_loop: asyncio.AbstractEventLoop,
     hyperion_fixture: HyperionFixture,
 ) -> None:
     """Test starting and stopping an led stream."""
@@ -1220,7 +1225,7 @@ async def test_async_send_start_stop_led_stream(
 @pytest.mark.asyncio
 # pylint: disable=too-many-statements
 async def test_callbacks(
-    loop: asyncio.AbstractEventLoop, rw: MockStreamReaderWriter
+    event_loop: asyncio.AbstractEventLoop, rw: MockStreamReaderWriter
 ) -> None:
     """Test updating components."""
     cb = Mock()
@@ -1402,7 +1407,7 @@ async def test_callbacks(
 
 @pytest.mark.asyncio
 async def test_is_auth_required(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test determining if authorization is required."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -1424,7 +1429,7 @@ async def test_is_auth_required(
 
 @pytest.mark.asyncio
 async def test_async_send_login(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test setting videomode."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -1443,7 +1448,7 @@ async def test_async_send_login(
 
 @pytest.mark.asyncio
 async def test_disconnecting_leaves_no_tasks(
-    loop: asyncio.AbstractEventLoop, rw: MockStreamReaderWriter
+    event_loop: asyncio.AbstractEventLoop, rw: MockStreamReaderWriter
 ) -> None:
     """Verify stopping the background task."""
     before_tasks = asyncio.all_tasks()
@@ -1456,7 +1461,7 @@ async def test_disconnecting_leaves_no_tasks(
 
 @pytest.mark.asyncio
 async def test_async_send_logout(
-    loop: asyncio.AbstractEventLoop, rw: MockStreamReaderWriter
+    event_loop: asyncio.AbstractEventLoop, rw: MockStreamReaderWriter
 ) -> None:
     """Test setting videomode."""
     before_tasks = asyncio.all_tasks()
@@ -1492,7 +1497,7 @@ async def test_async_send_logout(
 
 @pytest.mark.asyncio
 async def test_async_send_request_token(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test requesting an auth token."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -1541,7 +1546,7 @@ async def test_async_send_request_token(
 
 @pytest.mark.asyncio
 async def test_async_send_serverinfo(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test requesting serverinfo."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -1550,7 +1555,7 @@ async def test_async_send_serverinfo(
     assert await hc.async_send_get_serverinfo(**SERVERINFO_REQUEST)
 
 
-async def test_threaded_client() -> None:
+def test_threaded_client() -> None:
     """Test the threaded client."""
 
     hc = client.ThreadedHyperionClient(
@@ -1596,7 +1601,7 @@ def test_threaded_client_has_correct_methods() -> None:
 
 @pytest.mark.asyncio
 async def test_client_write_and_close_handles_network_issues(
-    loop: asyncio.AbstractEventLoop,
+    event_loop: asyncio.AbstractEventLoop,
     rw: MockStreamReaderWriter,
 ) -> None:
     """Verify sending data does not throw exceptions."""
@@ -1615,7 +1620,7 @@ async def test_client_write_and_close_handles_network_issues(
 
 @pytest.mark.asyncio
 async def test_client_handles_network_issues_bad_read(
-    loop: asyncio.AbstractEventLoop,
+    event_loop: asyncio.AbstractEventLoop,
     hyperion_fixture: HyperionFixture,
 ) -> None:
     """Verify a bad read causes a reconnection."""
@@ -1639,7 +1644,7 @@ async def test_client_handles_network_issues_bad_read(
 
 @pytest.mark.asyncio
 async def test_client_handles_network_issues_unexpected_close(
-    loop: asyncio.AbstractEventLoop,
+    event_loop: asyncio.AbstractEventLoop,
     hyperion_fixture: HyperionFixture,
 ) -> None:
     """Verify an unexpected close causes a reconnection."""
@@ -1665,7 +1670,7 @@ async def test_client_handles_network_issues_unexpected_close(
 
 @pytest.mark.asyncio
 async def test_client_handles_network_issues_bad_read_cannot_reconnect_ads(
-    loop: asyncio.AbstractEventLoop,
+    event_loop: asyncio.AbstractEventLoop,
     advance_time: EventLoopClockAdvancer,
     hyperion_fixture: HyperionFixture,
 ) -> None:
@@ -1705,7 +1710,7 @@ async def test_client_handles_network_issues_bad_read_cannot_reconnect_ads(
 
 @pytest.mark.asyncio
 async def test_client_connect_handles_network_issues_cannot_reconnect_connection_error(
-    loop: asyncio.AbstractEventLoop,
+    event_loop: asyncio.AbstractEventLoop,
     rw: MockStreamReaderWriter,
 ) -> None:
     """Verify connecting does throw exceptions and behaves correctly."""
@@ -1725,7 +1730,7 @@ async def test_client_connect_handles_network_issues_cannot_reconnect_connection
 
 
 @pytest.mark.asyncio
-async def test_client_connection_timeout(loop: asyncio.AbstractEventLoop) -> None:
+async def test_client_connection_timeout(event_loop: asyncio.AbstractEventLoop) -> None:
     """Verify connection and read timeouts behave correctly."""
 
     # == Verify timeout is dealt with correctly during connection.
@@ -1736,7 +1741,7 @@ async def test_client_connection_timeout(loop: asyncio.AbstractEventLoop) -> Non
 
 @pytest.mark.asyncio
 async def test_client_timeout(
-    loop: asyncio.AbstractEventLoop,
+    event_loop: asyncio.AbstractEventLoop,
     advance_time: EventLoopClockAdvancer,
     hyperion_fixture: HyperionFixture,
 ) -> None:
@@ -1805,7 +1810,7 @@ async def test_client_timeout(
 
 @pytest.mark.asyncio
 async def test_send_and_receive(
-    loop: asyncio.AbstractEventLoop,
+    event_loop: asyncio.AbstractEventLoop,
     advance_time: EventLoopClockAdvancer,
     hyperion_fixture: HyperionFixture,
 ) -> None:
@@ -1854,7 +1859,7 @@ async def test_send_and_receive(
 
 @pytest.mark.asyncio
 async def test_using_custom_tan(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test a send and receive wrapper."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -1901,7 +1906,7 @@ async def test_using_custom_tan(
 
 
 async def test_async_send_calls_have_async_call(
-    loop: asyncio.AbstractEventLoop,
+    event_loop: asyncio.AbstractEventLoop,
 ) -> None:
     """Verify async_send_* methods have an async_* pair."""
     for name, value in inspect.getmembers(client.HyperionClient):
@@ -1919,7 +1924,7 @@ async def test_async_send_calls_have_async_call(
 
 @pytest.mark.asyncio
 async def test_double_connect(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test the behavior of a double connect call."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -1931,7 +1936,7 @@ async def test_double_connect(
 
 @pytest.mark.asyncio
 async def test_double_disconnect(
-    loop: asyncio.AbstractEventLoop, rw: MockStreamReaderWriter
+    event_loop: asyncio.AbstractEventLoop, rw: MockStreamReaderWriter
 ) -> None:
     """Test the behavior of a double disconnect call."""
     hc = await _create_client_and_connect(rw)
@@ -1939,7 +1944,7 @@ async def test_double_disconnect(
     assert await hc.async_client_disconnect()
 
 
-async def test_generate_random_auth_id() -> None:
+def test_generate_random_auth_id() -> None:
     """Test arandomly generated auth id."""
     random_id = client.generate_random_auth_id()
     assert len(random_id) == 5
@@ -1949,7 +1954,7 @@ async def test_generate_random_auth_id() -> None:
 
 @pytest.mark.asyncio
 async def test_sysinfo(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Test the sysinfo command."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -1966,7 +1971,7 @@ async def test_sysinfo(
 
 @pytest.mark.asyncio
 async def test_sysinfo_id(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Verify fetching the sysinfo id."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -1983,7 +1988,7 @@ async def test_sysinfo_id(
 
 @pytest.mark.asyncio
 async def test_sysinfo_version(
-    loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
 ) -> None:
     """Verify fetching the sysinfo version."""
     (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
@@ -2000,7 +2005,7 @@ async def test_sysinfo_version(
 
 @pytest.mark.asyncio
 async def test_context_manager(
-    loop: asyncio.AbstractEventLoop, rw: MockStreamReaderWriter
+    event_loop: asyncio.AbstractEventLoop, rw: MockStreamReaderWriter
 ) -> None:
     """Test the context manager functionality."""
 
