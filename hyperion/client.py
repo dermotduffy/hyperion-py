@@ -1,6 +1,4 @@
-#!/usr/bin/python
 """Client for Hyperion servers."""
-
 from __future__ import annotations
 
 import asyncio
@@ -22,6 +20,7 @@ from typing import (
     Awaitable,
     Callable,
     Coroutine,
+    Dict,
     Iterable,
     Mapping,
     Type,
@@ -34,8 +33,8 @@ from hyperion import const
 _LOGGER = logging.getLogger(__name__)
 
 HyperionCallback = Union[
-    Callable[[dict[str, Any]], Awaitable[None]],
-    Callable[[dict[str, Any]], None],
+    Callable[[Dict[str, Any]], Awaitable[None]],
+    Callable[[Dict[str, Any]], None],
 ]
 
 
@@ -524,7 +523,7 @@ class HyperionClient:
                 const.KEY_COMMAND,
             )
             return None
-        return cast(dict[str, Any], resp_json)
+        return cast(Dict[str, Any], resp_json)
 
     async def _maintenance_task_loop(self) -> None:
         try:

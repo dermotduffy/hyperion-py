@@ -1,4 +1,3 @@
-#!/usr/bin/python
 """Test for the Hyperion Client."""
 from __future__ import annotations
 
