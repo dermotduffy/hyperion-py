@@ -1469,7 +1469,8 @@ class HyperionClient:
         if sysinfo is not None and ResponseOK(sysinfo):
             sysinfo_id = (
                 sysinfo.get(const.KEY_INFO, {})
-                .get(const.KEY_HYPERION, {})
+                # .get(const.KEY_HYPERION, {})
+                .get(const.KEY_HYPERHDR, {})
                 .get(const.KEY_ID, None)
             )
             if not sysinfo_id or not isinstance(sysinfo_id, str):
@@ -1483,7 +1484,8 @@ class HyperionClient:
         if sysinfo is not None and ResponseOK(sysinfo):
             sysinfo_version = (
                 sysinfo.get(const.KEY_INFO, {})
-                .get(const.KEY_HYPERION, {})
+                # .get(const.KEY_HYPERION, {})
+                .get(const.KEY_HYPERHDR, {})
                 .get(const.KEY_VERSION, None)
             )
             if not sysinfo_version or not isinstance(sysinfo_version, str):
