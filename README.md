@@ -11,11 +11,11 @@
 [![License](https://img.shields.io/github/license/dermotduffy/hyperion-py.svg?style=flat-square)](LICENSE)
 [![BuyMeCoffee](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=flat-square)](https://www.buymeacoffee.com/dermotdu)
 
-# WARNING: THIS LIBRARY IS JUST BEGINNING DEVELOPMENT TO SUPPORT HYPERHDR AND SHOULD NOT BE USED IN PRODUCTION SYSTEMS
+# WARNING: This library is just beginning development to support HyperHDR and should not be used in production systems
 
-# I AM NOT A PYTHON DEVELOPER AND THERE IS PROBABLY LOTS OF STUFF THAT DOESN'T WORK RIGHT NOW.. SORRY :-/
+## I am not a Python developer and there is probably lots of stuff that doesn't work right now.. sorry :-/
 
-# FEEL FREE TO HELP IF YOU KNOW PYTHON :-)
+## Feel free to help if you know Python :-)
 
 # Hyperion Library
 
