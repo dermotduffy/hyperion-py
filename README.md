@@ -3,13 +3,19 @@
      width="20%"
      align="right"
      style="float: right; margin: 10px 0px 20px 20px;" />
-     
+
 [![PyPi](https://img.shields.io/pypi/v/hyperion-py.svg?style=flat-square)](https://pypi.org/project/hyperion-py/)
 [![PyPi](https://img.shields.io/pypi/pyversions/hyperion-py.svg?style=flat-square)](https://pypi.org/project/hyperion-py/)
 [![Build Status](https://img.shields.io/github/workflow/status/dermotduffy/hyperion-py/Build?style=flat-square)](https://github.com/dermotduffy/hyperion-py/actions/workflows/build.yaml)
 [![Test Coverage](https://img.shields.io/codecov/c/gh/dermotduffy/hyperion-py?style=flat-square)](https://codecov.io/gh/dermotduffy/hyperion-py)
 [![License](https://img.shields.io/github/license/dermotduffy/hyperion-py.svg?style=flat-square)](LICENSE)
 [![BuyMeCoffee](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=flat-square)](https://www.buymeacoffee.com/dermotdu)
+
+# WARNING: THIS LIBRARY IS JUST BEGINNING DEVELOPMENT TO SUPPORT HYPERHDR AND SHOULD NOT BE USED IN PRODUCTION SYSTEMS
+
+# I AM NOT A PYTHON DEVELOPER AND THERE IS PROBABLY LOTS OF STUFF THAT DOESN'T WORK RIGHT NOW.. SORRY :-/
+
+# FEEL FREE TO HELP IF YOU KNOW PYTHON :-)
 
 # Hyperion Library
 
@@ -21,7 +27,7 @@ inputs and outputs of this library.
 # Installation
 
 ```bash
-$ pip3 install hyperion-py
+pip3 install hyperion-py
 ```
 
 # Usage
@@ -56,11 +62,11 @@ The following arguments may be passed to the `HyperionClient` constructor:
 
 ### Connection, disconnection and client control calls
 
-   * `async_client_connect()`: Connect the client.
-   * `async_client_disconnect()`: Disconnect the client.
-   * `async_client_login()`: Login a connected client. Automatically called by
+* `async_client_connect()`: Connect the client.
+* `async_client_disconnect()`: Disconnect the client.
+* `async_client_login()`: Login a connected client. Automatically called by
      `async_client_connect()` unless the `raw_connection` constructor argument is True.
-   * `async_client_switch_instance()`: Switch to the configured instance on the Hyperion
+* `async_client_switch_instance()`: Switch to the configured instance on the Hyperion
      server. Automatically called by `async_client_connect()` unless the `raw_connection`
      constructor argument is True.
 
@@ -105,7 +111,7 @@ do not need to be specified.
 The API parameters and output are all as defined in the [JSON API
 documentation](https://docs.hyperion-project.org/en/json/).
 
-## Example usage:
+## Example usage
 
 ```python
 #!/usr/bin/env python
@@ -236,7 +242,6 @@ asyncio.get_event_loop().run_until_complete(set_color())
 The following example will start a stopped instance, wait for it to be ready,
 then switch to it. Uses [callbacks](#callbacks), discussed below.
 
-
 ```python
 #!/usr/bin/env python
 """Simple Hyperion client request demonstration."""
@@ -286,13 +291,14 @@ asyncio.get_event_loop().run_until_complete(instance_start_and_switch())
 ```
 
 <a name="callbacks"></a>
+
 ### Callbacks
 
 The client can be configured to callback as the Hyperion server reports new
 values. There are two classes of callbacks supported:
 
-   * **default_callback**: This callback will be called when a more specific callback is not specified.
-   * **callbacks**: A dict of callbacks keyed on the Hyperion subscription 'command' (see [JSON API documentation](https://docs.hyperion-project.org/en/json/))
+* **default_callback**: This callback will be called when a more specific callback is not specified.
+* **callbacks**: A dict of callbacks keyed on the Hyperion subscription 'command' (see [JSON API documentation](https://docs.hyperion-project.org/en/json/))
 
 Callbacks can be specified in the `HyperionClient` constructor
 (`default_callback=` or `callbacks=` arguments) or after construction via the
@@ -368,7 +374,7 @@ non-async versions (methods are named as shown above, except do not start with
 The thread must be given a chance to initialize the client prior to interaction
 with it. This method call will block the caller until the client has been initialized.
 
-   * wait_for_client_init()
+* wait_for_client_init()
 
 ### Example use of Threaded client
 
@@ -410,7 +416,7 @@ Output:
 Brightness: 59%
 ```
 
-## Exceptions / Errors 
+## Exceptions / Errors
 
 ### Philosophy
 
@@ -445,21 +451,21 @@ async with client.HyperionClient(TEST_HOST, TEST_PORT) as hc:
 ```
 
 <a name="timeouts"></a>
+
 ## Timeouts
 
 The client makes liberal use of timeouts, which may be specified at multiple levels:
 
-   * In the client constructor argument `timeout_secs`, used for connection and requests.
-   * In each request using a `timeout_secs` argument to the individual calls
+* In the client constructor argument `timeout_secs`, used for connection and requests.
+* In each request using a `timeout_secs` argument to the individual calls
 
 Timeout values:
 
-   * `None`: If `None` is used as a timeout, the client will wait forever.
-   * `0`: If `0` is used as a timeout, the client default (specified in the constructor) will be used.
-   * `>0.0`: This number of seconds (or partial seconds) will be used.
+* `None`: If `None` is used as a timeout, the client will wait forever.
+* `0`: If `0` is used as a timeout, the client default (specified in the constructor) will be used.
+* `>0.0`: This number of seconds (or partial seconds) will be used.
 
 By default, all requests will honour the `timeout_secs` specified in the client constructor unless explicitly overridden and defaults to 5 seconds (see [const.py](https://github.com/dermotduffy/hyperion-py/blob/master/hyperion/const.py#L95)). The one exception to this is the `async_send_request_token` which has a much larger default (180 seconds, see [const.py](https://github.com/dermotduffy/hyperion-py/blob/master/hyperion/const.py#L96)) as this request involves the user needing the interact with the Hyperion UI prior to the call being able to return.
-
 
 ## Helpers
 
@@ -468,10 +474,10 @@ By default, all requests will honour the `timeout_secs` specified in the client 
 A handful of convenience callable classes are provided to determine whether
 server responses were successful.
 
-   * `ResponseOK`: Whether any Hyperion command response was successful (general).
-   * `ServerInfoResponseOK`: Whether a `async_get_serverinfo` was successful.
-   * `LoginResponseOK`: Whether an `async_login` was successful.
-   * `SwitchInstanceResponseOK`: Whether an `async_switch_instance` command was successful.
+* `ResponseOK`: Whether any Hyperion command response was successful (general).
+* `ServerInfoResponseOK`: Whether a `async_get_serverinfo` was successful.
+* `LoginResponseOK`: Whether an `async_login` was successful.
+* `SwitchInstanceResponseOK`: Whether an `async_switch_instance` command was successful.
 
 #### Example usage
 
@@ -487,7 +493,7 @@ the `async_request_token` will randomly generate an ID, but if one is required
 to allow the user to confirm a match, it can be explicitly provided. In this case,
 this helper method is made available.
 
-   * `generate_random_auth_id`: Generate a random 5-character auth ID for external display and inclusion in a call to `async_request_token`.
+* `generate_random_auth_id`: Generate a random 5-character auth ID for external display and inclusion in a call to `async_request_token`.
 
 #### Example usage
 
