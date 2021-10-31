@@ -1,5 +1,5 @@
-<img src="images/hyperion-logo.png"
-     alt="Hyperion logo"
+<img src="images/hyperhdrlogo.png"
+     alt="HyperHDR logo"
      width="20%"
      align="right"
      style="float: right; margin: 10px 0px 20px 20px;" />
