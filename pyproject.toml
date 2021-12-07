@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hyperhdr-py"
-version = "0.7.4"
+version = "0.0.1"
 description = "HyperHDR Ambient Lighting Python Package"
 authors = ["Dermot Duffy <dermot.duffy@gmail.com>"]
 classifiers = [

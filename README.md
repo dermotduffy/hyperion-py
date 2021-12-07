@@ -11,16 +11,19 @@
 [![License](https://img.shields.io/github/license/dermotduffy/hyperhdr-py.svg?style=flat-square)](LICENSE)
 [![BuyMeCoffee](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=flat-square)](https://www.buymeacoffee.com/dermotdu) -->
 
-# WARNING: This library is just beginning development to support HyperHDR and should not be used in production systems
+## This library is a modified version of [Dermot Duffy](https://github.com/dermotduffy)'s excellent [hyperion-py](https://github.com/dermotduffy/hyperion-py)
 
-## I am not a Python developer and there is probably lots of stuff that doesn't work right now.. sorry :-/
+## Thank you dermotduffy! This literally would not exist without you 🎉
+
+### I am not a Python developer so you may run into something that doesn't work quite right. I've tested this on my own setup and it works well. If you do run into any problems, I'm sorry 🙁
 
 ## Feel free to help if you know Python :-)
 
 # HyperHDR Library
 
-Python library for
-[HyperHDR](https://github.com/awawa-dev/HyperHDR). See [JSON
+Python library for [HyperHDR](https://github.com/awawa-dev/HyperHDR).
+
+<!-- [HyperHDR](https://github.com/awawa-dev/HyperHDR). See [JSON
 API](https://docs.hyperhdr-project.org/en/json/) for more details about the
 inputs and outputs of this library.
 
@@ -502,4 +505,4 @@ auth_id  = hc.generate_random_auth_id()
 hc.async_send_login(comment="Trustworthy actor", id=auth_id)
 # Show auth_id to the user to allow them to verify the origin of the request,
 # then have them visit the HyperHDR UI.
-```
+``` -->
