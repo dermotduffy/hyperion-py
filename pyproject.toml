@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "hyperhdr-py"
-version = "0.7.4"
+version = "0.0.1"
 description = "HyperHDR Ambient Lighting Python Package"
-authors = ["Dermot Duffy <dermot.duffy@gmail.com>"]
+authors = ["mjoshd <mjoshd@live.com>"]
 classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3.8",
@@ -15,7 +15,7 @@ keywords = [
     "hyperhdr",
 ]
 license = "MIT"
-repository = "https://github.com/dermotduffy/hyperhdr-py"
+repository = "https://github.com/mjoshd/hyperhdr-py"
 include = ["hyperhdr/py.typed", "LICENSE"]
 readme = "README.md"
 packages = [
