@@ -1,1 +1,0 @@
-"""HyperHDR test package."""
