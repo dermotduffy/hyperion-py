@@ -1,1 +1,1 @@
-"""Hyperion Client package."""
+"""HyperHDR Client package."""

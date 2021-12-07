@@ -1,5 +1,5 @@
 #!/usr/bin/python
-"""Hyperion Constants."""
+"""HyperHDR Constants."""
 
 KEY_ACCEPT = "accept"
 KEY_ACTIVE = "active"
@@ -22,7 +22,7 @@ KEY_EFFECT = "effect"
 KEY_EFFECTS = "effects"
 KEY_ENABLED = "enabled"
 KEY_FRIENDLY_NAME = "friendly_name"
-KEY_HYPERION = "hyperhdr"
+KEY_HYPERHDR = "hyperhdr"
 KEY_LED_MAPPING = "imageToLedMapping"
 KEY_LED_MAPPING_TYPE = "imageToLedMappingType"
 KEY_ID = "id"
@@ -78,7 +78,7 @@ KEY_VISIBLE = "visible"
 KEY_VIDEOMODES = ["2D", "3DSBS", "3DTAB"]
 
 # ComponentIDs from:
-# https://docs.hyperion-project.org/en/json/Control.html#components-ids-explained
+# https://docs.hyperhdr-project.org/en/json/Control.html#components-ids-explained
 KEY_COMPONENTID = "componentId"
 KEY_COMPONENTID_ALL = "ALL"
 KEY_COMPONENTID_COLOR = "COLOR"
@@ -98,7 +98,7 @@ KEY_COMPONENTID_EXTERNAL_SOURCES = [
     KEY_COMPONENTID_V4L,
 ]
 
-# Maps between Hyperion API component names to Hyperion UI names.
+# Maps between HyperHDR API component names to HyperHDR UI names.
 KEY_COMPONENTID_TO_NAME = {
     KEY_COMPONENTID_ALL: "All",
     KEY_COMPONENTID_SMOOTHING: "Smoothing",

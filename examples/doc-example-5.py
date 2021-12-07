@@ -1,20 +1,20 @@
 #!/usr/bin/env python
-"""Simple Hyperion client request demonstration."""
+"""Simple HyperHDR client request demonstration."""
 
 import asyncio
 import logging
 import sys
 
-from hyperion import client
+from hyperhdr import client
 
-HOST = "hyperion"
+HOST = "hyperhdr"
 PRIORITY = 20
 
 
 async def set_color() -> None:
-    """Set red color on Hyperion."""
+    """Set red color on HyperHDR."""
 
-    async with client.HyperionClient(HOST) as hc:
+    async with client.HyperHDRClient(HOST) as hc:
         assert hc
 
         if not await hc.async_client_connect():

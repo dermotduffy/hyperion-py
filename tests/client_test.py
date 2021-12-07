@@ -1,4 +1,4 @@
-"""Test for the Hyperion Client."""
+"""Test for the HyperHDR Client."""
 from __future__ import annotations
 
 import asyncio
@@ -13,7 +13,7 @@ from unittest.mock import Mock, call, patch
 
 import pytest
 
-from hyperion import client, const
+from hyperhdr import client, const
 
 logging.basicConfig()
 _LOGGER = logging.getLogger(__name__)
@@ -48,9 +48,9 @@ TEST_SYSINFO_VERSION = "2.0.0-alpha.8"
 TEST_SYSINFO_RESPONSE = {
     "command": "sysinfo",
     "info": {
-        "hyperion": {
+        "hyperhdr": {
             "build": "fix-request-tan (GitHub-78458e44/5d5b2497-1601058791)",
-            "gitremote": "https://github.com/hyperion-project/hyperion.ng.git",
+            "gitremote": "https://github.com/hyperhdr-project/hyperhdr.ng.git",
             "id": TEST_SYSINFO_ID,
             "time": "Sep 29 2020 12:33:00",
             "version": TEST_SYSINFO_VERSION,
@@ -58,7 +58,7 @@ TEST_SYSINFO_RESPONSE = {
         "system": {
             "architecture": "arm",
             "domainName": "domain",
-            "hostName": "hyperion",
+            "hostName": "hyperhdr",
             "kernelType": "linux",
             "kernelVersion": "5.4.51-v7l+",
             "prettyName": "Raspbian GNU/Linux 10 (buster)",
@@ -314,7 +314,7 @@ async def _block_until_done(rw: MockStreamReaderWriter) -> None:
 
 
 async def _disconnect_and_assert_finished(
-    rw: MockStreamReaderWriter, hc: client.HyperionClient
+    rw: MockStreamReaderWriter, hc: client.HyperHDRClient
 ) -> None:
     """Disconnect and assert clean disconnection."""
     await rw.add_flow([("close", None)])
@@ -328,10 +328,10 @@ async def _create_client_and_connect(
     rw: MockStreamReaderWriter,
     *args: Any,
     **kwargs: Any,
-) -> client.HyperionClient:
-    """Create a HyperionClient and connect it."""
+) -> client.HyperHDRClient:
+    """Create a HyperHDRClient and connect it."""
     with patch("asyncio.open_connection", return_value=(rw, rw)):
-        hc = client.HyperionClient(
+        hc = client.HyperHDRClient(
             TEST_HOST,
             TEST_PORT,
             *args,
@@ -356,28 +356,28 @@ async def rw(
 
 
 @dataclass
-class HyperionFixture:
-    """Data from a HyperionFixture."""
+class HyperHDRFixture:
+    """Data from a HyperHDRFixture."""
 
     rw: MockStreamReaderWriter
-    hc: client.HyperionClient
+    hc: client.HyperHDRClient
 
 
 @pytest.fixture
-async def hyperion_fixture(
+async def hyperhdr_fixture(
     event_loop: asyncio.AbstractEventLoop,
     rw: MockStreamReaderWriter,
-) -> AsyncGenerator[HyperionFixture, None]:
+) -> AsyncGenerator[HyperHDRFixture, None]:
     """Create a basic connected client object."""
     hc = await _create_client_and_connect(rw)
     await rw.assert_flow_finished()
-    yield HyperionFixture(rw, hc)
+    yield HyperHDRFixture(rw, hc)
     await _disconnect_and_assert_finished(rw, hc)
 
 
 @pytest.mark.asyncio
 async def test_async_client_connect_success(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test async connection to server."""
 
@@ -405,7 +405,7 @@ async def test_async_client_connect_failure(
     )
 
     with patch("asyncio.open_connection", return_value=(rw, rw)):
-        hc = client.HyperionClient(TEST_HOST, TEST_PORT, token=TEST_TOKEN)
+        hc = client.HyperHDRClient(TEST_HOST, TEST_PORT, token=TEST_TOKEN)
         assert not await hc.async_client_connect()
         assert not hc.is_connected
         await rw.assert_flow_finished()
@@ -430,7 +430,7 @@ async def test_async_client_connect_failure(
     )
 
     with patch("asyncio.open_connection", return_value=(rw, rw)):
-        hc = client.HyperionClient(TEST_HOST, TEST_PORT, instance=TEST_INSTANCE)
+        hc = client.HyperHDRClient(TEST_HOST, TEST_PORT, instance=TEST_INSTANCE)
         assert not await hc.async_client_connect()
         assert not hc.is_connected
         await rw.assert_flow_finished()
@@ -451,7 +451,7 @@ async def test_async_client_connect_failure(
     )
 
     with patch("asyncio.open_connection", return_value=(rw, rw)):
-        hc = client.HyperionClient(TEST_HOST, TEST_PORT)
+        hc = client.HyperHDRClient(TEST_HOST, TEST_PORT)
         assert not await hc.async_client_connect()
         assert not hc.is_connected
         await rw.assert_flow_finished()
@@ -614,10 +614,10 @@ async def test_receive_wrong_data_type(
 
 @pytest.mark.asyncio
 async def test_is_on(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test the client reports correctly on whether components are on."""
-    hc = hyperion_fixture.hc
+    hc = hyperhdr_fixture.hc
 
     with open(_get_test_filepath(FILE_SERVERINFO_RESPONSE)) as fh:
         serverinfo_command_response = fh.readline()
@@ -659,10 +659,10 @@ async def test_is_on(
 
 @pytest.mark.asyncio
 async def test_update_component(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test updating components."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     # === Verify flipping a component.
     components_update = {
@@ -693,10 +693,10 @@ async def test_update_component(
 
 @pytest.mark.asyncio
 async def test_update_adjustment(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test updating adjustments."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
     adjustment_update = {
         "command": "adjustment-update",
         "data": [{"brightness": 25}],
@@ -712,10 +712,10 @@ async def test_update_adjustment(
 
 @pytest.mark.asyncio
 async def test_update_effect_list(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test updating effect list."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     effect = {
         "args": {
@@ -744,10 +744,10 @@ async def test_update_effect_list(
 
 @pytest.mark.asyncio
 async def test_update_priorities(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test updating priorities."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     priorities = [
         {
@@ -863,10 +863,10 @@ async def test_update_instances(
 
 @pytest.mark.asyncio
 async def test_update_led_mapping_type(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test updating LED mapping type."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     led_mapping_type = "unicolor_mean"
     led_mapping_type_update = {
@@ -882,19 +882,19 @@ async def test_update_led_mapping_type(
 
 @pytest.mark.asyncio
 async def test_update_sessions(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test updating sessions."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     sessions = [
         {
             "address": "192.168.58.169",
             "domain": "local.",
             "host": "ubuntu-2",
-            "name": "My Hyperion Config@ubuntu:8090",
+            "name": "My HyperHDR Config@ubuntu:8090",
             "port": 8090,
-            "type": "_hyperiond-http._tcp.",
+            "type": "_hyperhdrd-http._tcp.",
         }
     ]
     sessions_update = {
@@ -910,10 +910,10 @@ async def test_update_sessions(
 
 @pytest.mark.asyncio
 async def test_videomode(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test updating videomode."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     videomode = "3DSBS"
 
@@ -930,10 +930,10 @@ async def test_videomode(
 
 @pytest.mark.asyncio
 async def test_update_leds(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test updating LEDs."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     leds = [{"hmin": 0.0, "hmax": 1.0, "vmin": 0.0, "vmax": 1.0}]
     leds_update = {"command": "leds-update", "data": {"leds": leds}}
@@ -947,10 +947,10 @@ async def test_update_leds(
 
 @pytest.mark.asyncio
 async def test_async_send_set_color(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test controlling color."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
     color_in = {
         "color": [0, 0, 255],
         "command": "color",
@@ -980,10 +980,10 @@ async def test_async_send_set_color(
 
 @pytest.mark.asyncio
 async def test_async_send_set_effect(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test controlling effect."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
     effect_in = {
         "command": "effect",
         "effect": {"name": "Warm mood blobs"},
@@ -1011,10 +1011,10 @@ async def test_async_send_set_effect(
 
 @pytest.mark.asyncio
 async def test_async_send_set_image(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test controlling image."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
     image_in = {
         "command": "image",
         "imagedata": "VGhpcyBpcyBubyBpbWFnZSEgOik=",
@@ -1052,10 +1052,10 @@ async def test_async_send_set_image(
 
 @pytest.mark.asyncio
 async def test_async_send_clear(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test clearing priorities."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
     clear_in = {
         "command": "clear",
         "priority": 50,
@@ -1069,10 +1069,10 @@ async def test_async_send_clear(
 
 @pytest.mark.asyncio
 async def test_async_send_set_adjustment(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test setting adjustment."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
     adjustment_in = {"command": "adjustment", "adjustment": {"gammaRed": 1.5}}
 
     await rw.add_flow([("write", adjustment_in)])
@@ -1084,10 +1084,10 @@ async def test_async_send_set_adjustment(
 @pytest.mark.asyncio
 async def test_async_send_set_led_mapping_type(
     event_loop: asyncio.AbstractEventLoop,
-    hyperion_fixture: HyperionFixture,
+    hyperhdr_fixture: HyperHDRFixture,
 ) -> None:
     """Test setting adjustment."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
     led_mapping_type_in = {
         "command": "processing",
         "mappingType": "multicolor_mean",
@@ -1101,10 +1101,10 @@ async def test_async_send_set_led_mapping_type(
 
 @pytest.mark.asyncio
 async def test_async_send_set_videomode(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test setting videomode."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
     videomode_in = {"command": "videomode", "videoMode": "3DTAB"}
 
     await rw.add_flow([("write", videomode_in)])
@@ -1115,10 +1115,10 @@ async def test_async_send_set_videomode(
 
 @pytest.mark.asyncio
 async def test_async_send_set_component(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test setting component."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
     componentstate = {
         "component": "LEDDEVICE",
         "state": False,
@@ -1136,10 +1136,10 @@ async def test_async_send_set_component(
 
 @pytest.mark.asyncio
 async def test_async_send_set_sourceselect(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test setting sourceselect."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
     sourceselect_in = {"command": "sourceselect", "priority": 50}
 
     await rw.add_flow([("write", sourceselect_in)])
@@ -1151,10 +1151,10 @@ async def test_async_send_set_sourceselect(
 @pytest.mark.asyncio
 async def test_start_async_send_stop_switch_instance(
     event_loop: asyncio.AbstractEventLoop,
-    hyperion_fixture: HyperionFixture,
+    hyperhdr_fixture: HyperHDRFixture,
 ) -> None:
     """Test starting, stopping and switching instances."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
     start_in = {"command": "instance", "subcommand": "startInstance", "instance": 1}
 
     await rw.add_flow([("write", start_in)])
@@ -1180,10 +1180,10 @@ async def test_start_async_send_stop_switch_instance(
 @pytest.mark.asyncio
 async def test_start_async_send_stop_image_stream(
     event_loop: asyncio.AbstractEventLoop,
-    hyperion_fixture: HyperionFixture,
+    hyperhdr_fixture: HyperHDRFixture,
 ) -> None:
     """Test starting and stopping an image stream."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
     start_in = {"command": "ledcolors", "subcommand": "imagestream-start"}
 
     await rw.add_flow([("write", start_in)])
@@ -1202,10 +1202,10 @@ async def test_start_async_send_stop_image_stream(
 @pytest.mark.asyncio
 async def test_async_send_start_stop_led_stream(
     event_loop: asyncio.AbstractEventLoop,
-    hyperion_fixture: HyperionFixture,
+    hyperhdr_fixture: HyperHDRFixture,
 ) -> None:
     """Test starting and stopping an led stream."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
     start_in = {"command": "ledcolors", "subcommand": "ledstream-start"}
 
     await rw.add_flow([("write", start_in)])
@@ -1406,10 +1406,10 @@ async def test_callbacks(
 
 @pytest.mark.asyncio
 async def test_is_auth_required(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test determining if authorization is required."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     auth_request = {"command": "authorize", "subcommand": "tokenRequired", "tan": 2}
 
@@ -1428,10 +1428,10 @@ async def test_is_auth_required(
 
 @pytest.mark.asyncio
 async def test_async_send_login(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test setting videomode."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
     token = "sekrit"
     auth_login_in = {
         "command": "authorize",
@@ -1496,10 +1496,10 @@ async def test_async_send_logout(
 
 @pytest.mark.asyncio
 async def test_async_send_request_token(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test requesting an auth token."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     # Test requesting a token.
     request_token_in: dict[str, Any] = {
@@ -1545,10 +1545,10 @@ async def test_async_send_request_token(
 
 @pytest.mark.asyncio
 async def test_async_send_serverinfo(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test requesting serverinfo."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     await rw.add_flow([("write", SERVERINFO_REQUEST)])
     assert await hc.async_send_get_serverinfo(**SERVERINFO_REQUEST)
@@ -1557,7 +1557,7 @@ async def test_async_send_serverinfo(
 def test_threaded_client() -> None:
     """Test the threaded client."""
 
-    hc = client.ThreadedHyperionClient(
+    hc = client.ThreadedHyperHDRClient(
         TEST_HOST,
         TEST_PORT,
     )
@@ -1579,7 +1579,7 @@ def test_threaded_client() -> None:
 def test_threaded_client_has_correct_methods() -> None:
     """Verify the threaded client exports all the correct methods."""
     contents = dir(
-        client.ThreadedHyperionClient(
+        client.ThreadedHyperHDRClient(
             TEST_HOST,
             TEST_PORT,
         )
@@ -1587,13 +1587,13 @@ def test_threaded_client_has_correct_methods() -> None:
 
     # Verify all async methods have a sync wrapped version.
     for name, _ in inspect.getmembers(
-        client.ThreadedHyperionClient, inspect.iscoroutinefunction
+        client.ThreadedHyperHDRClient, inspect.iscoroutinefunction
     ):
         if name.startswith("async_"):
             assert name[len("async_") :] in contents
 
     for name, _ in inspect.getmembers(
-        client.ThreadedHyperionClient, lambda o: isinstance(o, property)
+        client.ThreadedHyperHDRClient, lambda o: isinstance(o, property)
     ):
         assert name in contents
 
@@ -1620,11 +1620,11 @@ async def test_client_write_and_close_handles_network_issues(
 @pytest.mark.asyncio
 async def test_client_handles_network_issues_bad_read(
     event_loop: asyncio.AbstractEventLoop,
-    hyperion_fixture: HyperionFixture,
+    hyperhdr_fixture: HyperHDRFixture,
 ) -> None:
     """Verify a bad read causes a reconnection."""
 
-    rw = hyperion_fixture.rw
+    rw = hyperhdr_fixture.rw
 
     with patch("asyncio.open_connection", return_value=(rw, rw)):
         await rw.add_flow(
@@ -1644,12 +1644,12 @@ async def test_client_handles_network_issues_bad_read(
 @pytest.mark.asyncio
 async def test_client_handles_network_issues_unexpected_close(
     event_loop: asyncio.AbstractEventLoop,
-    hyperion_fixture: HyperionFixture,
+    hyperhdr_fixture: HyperHDRFixture,
 ) -> None:
     """Verify an unexpected close causes a reconnection."""
 
     # == Verify an empty read causes a disconnect and reconnect.
-    (rw, _) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, _) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     # == Read returns empty, connection closed, but instantly re-established.
     with patch("asyncio.open_connection", return_value=(rw, rw)):
@@ -1671,10 +1671,10 @@ async def test_client_handles_network_issues_unexpected_close(
 async def test_client_handles_network_issues_bad_read_cannot_reconnect_ads(
     event_loop: asyncio.AbstractEventLoop,
     advance_time: EventLoopClockAdvancer,
-    hyperion_fixture: HyperionFixture,
+    hyperhdr_fixture: HyperHDRFixture,
 ) -> None:
     """Verify behavior after a bad read when the connection cannot be re-established."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     # == Read throws an exception, connection closed, cannot be re-established.
     with patch("asyncio.open_connection", side_effect=ConnectionError):
@@ -1734,7 +1734,7 @@ async def test_client_connection_timeout(event_loop: asyncio.AbstractEventLoop) 
 
     # == Verify timeout is dealt with correctly during connection.
     with patch("asyncio.open_connection", side_effect=asyncio.TimeoutError):
-        hc = client.HyperionClient(TEST_HOST, TEST_PORT)
+        hc = client.HyperHDRClient(TEST_HOST, TEST_PORT)
         assert not await hc.async_client_connect()
 
 
@@ -1742,10 +1742,10 @@ async def test_client_connection_timeout(event_loop: asyncio.AbstractEventLoop) 
 async def test_client_timeout(
     event_loop: asyncio.AbstractEventLoop,
     advance_time: EventLoopClockAdvancer,
-    hyperion_fixture: HyperionFixture,
+    hyperhdr_fixture: HyperHDRFixture,
 ) -> None:
     """Verify connection and read timeouts behave correctly."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     # == Verify timeout is dealt with during read.
     await rw.add_flow([("write", {**SERVERINFO_REQUEST, **{"tan": 2}})])
@@ -1811,10 +1811,10 @@ async def test_client_timeout(
 async def test_send_and_receive(
     event_loop: asyncio.AbstractEventLoop,
     advance_time: EventLoopClockAdvancer,
-    hyperion_fixture: HyperionFixture,
+    hyperhdr_fixture: HyperHDRFixture,
 ) -> None:
     """Test a send and receive wrapper."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
     clear_in = {"command": "clear", "priority": 50, "tan": 2}
     clear_out = {"command": "clear", "success": True, "tan": 2}
 
@@ -1833,11 +1833,11 @@ async def test_send_and_receive(
     # Test when the result doesn't include a matching tan (should time
     # out). See related bug to include tan wherever possible:
     #
-    # https://github.com/hyperion-project/hyperion.ng/issues/1001
+    # https://github.com/hyperhdr-project/hyperhdr.ng/issues/1001
     clear_error = {
         "command": "clear",
         "error": "Errors during specific message validation, "
-        "please consult the Hyperion Log",
+        "please consult the HyperHDR Log",
         "success": False,
         "tan": 0,
     }
@@ -1858,10 +1858,10 @@ async def test_send_and_receive(
 
 @pytest.mark.asyncio
 async def test_using_custom_tan(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test a send and receive wrapper."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     clear_in = {"command": "clear", "priority": 50, "tan": 100}
     clear_out = {"command": "clear", "success": True, "tan": 100}
@@ -1873,7 +1873,7 @@ async def test_using_custom_tan(
     # Test a call with a duplicate tan (will raise an exception).
     await rw.add_flow([("write", clear_in), ("read", clear_out)])
 
-    with pytest.raises(client.HyperionClientTanNotAvailable):
+    with pytest.raises(client.HyperHDRClientTanNotAvailable):
         await asyncio.gather(
             hc.async_clear(priority=50, tan=100),
             hc.async_clear(priority=50, tan=100),
@@ -1908,10 +1908,10 @@ async def test_async_send_calls_have_async_call(
     event_loop: asyncio.AbstractEventLoop,
 ) -> None:
     """Verify async_send_* methods have an async_* pair."""
-    for name, value in inspect.getmembers(client.HyperionClient):
+    for name, value in inspect.getmembers(client.HyperHDRClient):
         if name.startswith("async_send_") and callable(value):
             new_name = "async_" + name[len("async_send_") :]
-            wrapper = getattr(client.HyperionClient, new_name, None)
+            wrapper = getattr(client.HyperHDRClient, new_name, None)
             assert wrapper is not None
 
             # wrapper.func -> Returns a partial for AwaitResponseWrapper.__call__()
@@ -1923,10 +1923,10 @@ async def test_async_send_calls_have_async_call(
 
 @pytest.mark.asyncio
 async def test_double_connect(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test the behavior of a double connect call."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     with patch("asyncio.open_connection", return_value=(rw, rw)):
         assert await hc.async_client_connect()
@@ -1953,10 +1953,10 @@ def test_generate_random_auth_id() -> None:
 
 @pytest.mark.asyncio
 async def test_sysinfo(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Test the sysinfo command."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     sysinfo_in = {"command": "sysinfo", "tan": 2}
     sysinfo_out: dict[str, Any] = {
@@ -1970,10 +1970,10 @@ async def test_sysinfo(
 
 @pytest.mark.asyncio
 async def test_sysinfo_id(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Verify fetching the sysinfo id."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     sysinfo_in = {"command": "sysinfo", "tan": 2}
     sysinfo_out: dict[str, Any] = {
@@ -1987,10 +1987,10 @@ async def test_sysinfo_id(
 
 @pytest.mark.asyncio
 async def test_sysinfo_version(
-    event_loop: asyncio.AbstractEventLoop, hyperion_fixture: HyperionFixture
+    event_loop: asyncio.AbstractEventLoop, hyperhdr_fixture: HyperHDRFixture
 ) -> None:
     """Verify fetching the sysinfo version."""
-    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    (rw, hc) = hyperhdr_fixture.rw, hyperhdr_fixture.hc
 
     sysinfo_in = {"command": "sysinfo", "tan": 2}
     sysinfo_out: dict[str, Any] = {
@@ -2009,7 +2009,7 @@ async def test_context_manager(
     """Test the context manager functionality."""
 
     with patch("asyncio.open_connection", return_value=(rw, rw)):
-        async with client.HyperionClient(TEST_HOST, TEST_PORT) as hc:
+        async with client.HyperHDRClient(TEST_HOST, TEST_PORT) as hc:
             assert hc
             assert hc.is_connected
             await rw.assert_flow_finished()
@@ -2020,7 +2020,7 @@ async def test_context_manager(
 
 
 async def test_response_ok() -> None:
-    """Test case for the Hyperion Client ResponseOK class."""
+    """Test case for the HyperHDR Client ResponseOK class."""
 
     # Intentionally pass the wrong type.
     assert not client.ResponseOK(["not", "a", "dict"])  # type: ignore[arg-type]

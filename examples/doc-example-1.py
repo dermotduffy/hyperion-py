@@ -1,20 +1,20 @@
 #!/usr/bin/env python
-"""Simple Hyperion client read demonstration."""
+"""Simple HyperHDR client read demonstration."""
 
 import asyncio
 
-from hyperion import client, const
+from hyperhdr import client, const
 
-HOST = "hyperion"
+HOST = "hyperhdr"
 
 
 async def print_brightness() -> None:
-    """Print Hyperion brightness."""
+    """Print HyperHDR brightness."""
 
-    async with client.HyperionClient(HOST) as hyperion_client:
-        assert hyperion_client
+    async with client.HyperHDRClient(HOST) as hyperhdr_client:
+        assert hyperhdr_client
 
-        adjustment = hyperion_client.adjustment
+        adjustment = hyperhdr_client.adjustment
         assert adjustment
 
         print("Brightness: %i%%" % adjustment[0][const.KEY_BRIGHTNESS])

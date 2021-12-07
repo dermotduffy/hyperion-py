@@ -1,26 +1,26 @@
 #!/usr/bin/env python
-"""Simple Hyperion client callback demonstration."""
+"""Simple HyperHDR client callback demonstration."""
 
 from __future__ import annotations
 
 import asyncio
 from typing import Any
 
-from hyperion import client
+from hyperhdr import client
 
-HOST = "hyperion"
+HOST = "hyperhdr"
 
 
 def callback(json: dict[str, Any]) -> None:
     """Sample callback function."""
 
-    print("Received Hyperion callback: %s" % json)
+    print("Received HyperHDR callback: %s" % json)
 
 
 async def show_callback() -> None:
     """Show a default callback is called."""
 
-    async with client.HyperionClient(HOST, default_callback=callback):
+    async with client.HyperHDRClient(HOST, default_callback=callback):
         pass
 
 

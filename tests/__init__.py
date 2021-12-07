@@ -1,1 +1,1 @@
-"""Hyperion test package."""
+"""HyperHDR test package."""

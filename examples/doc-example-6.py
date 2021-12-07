@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Simple Hyperion client request demonstration."""
+"""Simple HyperHDR client request demonstration."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ import logging
 import sys
 from typing import Any
 
-from hyperion import client
+from hyperhdr import client
 
-HOST = "hyperion"
+HOST = "hyperhdr"
 PRIORITY = 20
 
 
@@ -24,7 +24,7 @@ async def instance_start_and_switch() -> None:
             if data["instance"] == 1 and data["running"]:
                 instance_ready.set()
 
-    async with client.HyperionClient(
+    async with client.HyperHDRClient(
         HOST, callbacks={"instance-update": instance_update}
     ) as hc:
         assert hc

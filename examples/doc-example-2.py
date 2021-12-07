@@ -1,17 +1,17 @@
 #!/usr/bin/env python
-"""Simple Hyperion client request demonstration."""
+"""Simple HyperHDR client request demonstration."""
 
 import asyncio
 
-from hyperion import client
+from hyperhdr import client
 
-HOST = "hyperion"
+HOST = "hyperhdr"
 
 
 async def print_if_auth_required() -> None:
     """Print whether auth is required."""
 
-    hc = client.HyperionClient(HOST)
+    hc = client.HyperHDRClient(HOST)
     await hc.async_client_connect()
 
     result = await hc.async_is_auth_required()
