@@ -1,8 +1,4 @@
-<img src="images/hyperhdrlogo.png"
-     alt="HyperHDR logo"
-     width="20%"
-     align="right"
-     style="float: right; margin: 10px 0px 20px 20px;" />
+# This library is a modified version of [Dermot Duffy](https://github.com/dermotduffy)'s excellent [hyperion-py](https://github.com/dermotduffy/hyperion-py)
 
 <!-- [![PyPi](https://img.shields.io/pypi/v/hyperhdr-py.svg?style=flat-square)](https://pypi.org/project/hyperhdr-py/)
 [![PyPi](https://img.shields.io/pypi/pyversions/hyperhdr-py.svg?style=flat-square)](https://pypi.org/project/hyperhdr-py/)
@@ -11,15 +7,19 @@
 [![License](https://img.shields.io/github/license/dermotduffy/hyperhdr-py.svg?style=flat-square)](LICENSE)
 [![BuyMeCoffee](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=flat-square)](https://www.buymeacoffee.com/dermotdu) -->
 
-## This library is a modified version of [Dermot Duffy](https://github.com/dermotduffy)'s excellent [hyperion-py](https://github.com/dermotduffy/hyperion-py)
-
 ## Thank you dermotduffy! This literally would not exist without you 🎉
 
 ### I am not a Python developer so you may run into something that doesn't work quite right. I've tested this on my own setup and it works well. If you do run into any problems, I'm sorry 🙁
 
-## Feel free to help if you know Python :-)
+## Feel free to open an issue and/or help if you know Python 😀
 
-# HyperHDR Library
+<img src="https://github.com/mjoshd/hyperhdr-py/blob/main/images/hyperhdrlogo.png?raw=true"
+     alt="HyperHDR logo"
+     width="160px"
+     align="center"
+     style="float: left;" />
+
+## Library
 
 Python library for [HyperHDR](https://github.com/awawa-dev/HyperHDR).
 
