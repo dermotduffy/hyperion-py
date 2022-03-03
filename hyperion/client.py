@@ -314,6 +314,11 @@ class HyperionClient:
         """Return client state."""
         return self._client_state.get_all()
 
+    @property
+    def host(self) -> str:
+        """Return host ip"""
+        return self._host
+    
     async def async_client_connect(self) -> bool:
         """Connect to the Hyperion server."""
 
