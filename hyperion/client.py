@@ -23,7 +23,6 @@ from typing import (
     Dict,
     Iterable,
     Mapping,
-    Type,
     Union,
     cast,
 )
@@ -92,9 +91,8 @@ class HyperionClient:
         self,
         host: str,
         port: int = const.DEFAULT_PORT_JSON,
-        default_callback: Union[HyperionCallback, Iterable[HyperionCallback]]
-        | None = None,
-        callbacks: Mapping[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
+        default_callback: HyperionCallback | Iterable[HyperionCallback] | None = None,
+        callbacks: Mapping[str, HyperionCallback | Iterable[HyperionCallback]]
         | None = None,
         token: str | None = None,
         instance: int = const.DEFAULT_INSTANCE,
@@ -153,7 +151,7 @@ class HyperionClient:
 
     async def __aexit__(
         self,
-        exc_type: Type[BaseException] | None,
+        exc_type: type[BaseException] | None,
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
@@ -177,7 +175,7 @@ class HyperionClient:
     @classmethod
     def _set_or_add_callbacks(
         cls,
-        callbacks: Union[HyperionCallback, Iterable[HyperionCallback]] | None,
+        callbacks: HyperionCallback | Iterable[HyperionCallback] | None,
         add: bool,
         target: list[HyperionCallback],
     ) -> None:
@@ -194,7 +192,7 @@ class HyperionClient:
     @classmethod
     def _remove_callbacks(
         cls,
-        callbacks: Union[HyperionCallback, Iterable[HyperionCallback]],
+        callbacks: HyperionCallback | Iterable[HyperionCallback],
         target: list[HyperionCallback],
     ) -> None:
         """Set or add a single or list of callbacks."""
@@ -209,8 +207,7 @@ class HyperionClient:
 
     def set_callbacks(
         self,
-        callbacks: Mapping[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
-        | None,
+        callbacks: Mapping[str, HyperionCallback | Iterable[HyperionCallback]] | None,
     ) -> None:
         """Set update callbacks."""
         if not callbacks:
@@ -223,7 +220,7 @@ class HyperionClient:
 
     def add_callbacks(
         self,
-        callbacks: Mapping[str, Union[HyperionCallback, Iterable[HyperionCallback]]],
+        callbacks: Mapping[str, HyperionCallback | Iterable[HyperionCallback]],
     ) -> None:
         """Add update callbacks."""
         if not callbacks:
@@ -235,7 +232,7 @@ class HyperionClient:
 
     def remove_callbacks(
         self,
-        callbacks: Mapping[str, Union[HyperionCallback, Iterable[HyperionCallback]]],
+        callbacks: Mapping[str, HyperionCallback | Iterable[HyperionCallback]],
     ) -> None:
         """Add update callbacks."""
         if not callbacks:
@@ -247,7 +244,7 @@ class HyperionClient:
 
     def set_default_callback(
         self,
-        default_callback: Union[HyperionCallback, Iterable[HyperionCallback]] | None,
+        default_callback: HyperionCallback | Iterable[HyperionCallback] | None,
     ) -> None:
         """Set the default callbacks."""
         HyperionClient._set_or_add_callbacks(
@@ -256,7 +253,7 @@ class HyperionClient:
 
     def add_default_callback(
         self,
-        default_callback: Union[HyperionCallback, Iterable[HyperionCallback]],
+        default_callback: HyperionCallback | Iterable[HyperionCallback],
     ) -> None:
         """Set the default callbacks."""
         HyperionClient._set_or_add_callbacks(
@@ -265,7 +262,7 @@ class HyperionClient:
 
     def remove_default_callback(
         self,
-        default_callback: Union[HyperionCallback, Iterable[HyperionCallback]],
+        default_callback: HyperionCallback | Iterable[HyperionCallback],
     ) -> None:
         """Set the default callbacks."""
         HyperionClient._remove_callbacks(default_callback, self._default_callback)
@@ -313,6 +310,16 @@ class HyperionClient:
     def client_state(self) -> dict[str, Any]:
         """Return client state."""
         return self._client_state.get_all()
+
+    @property
+    def host(self) -> str:
+        """Return host ip."""
+        return self._host
+
+    @property
+    def remote_url(self) -> str:
+        """Return remote control URL."""
+        return f"http://{self._host}:{const.DEFAULT_PORT_UI}/#remote"
 
     async def async_client_connect(self) -> bool:
         """Connect to the Hyperion server."""
@@ -813,7 +820,7 @@ class HyperionClient:
             self._timeout_secs = timeout_secs
 
         def _extract_timeout_secs(
-            self, hyperion_client: "HyperionClient", data: dict[str, Any]
+            self, hyperion_client: HyperionClient, data: dict[str, Any]
         ) -> float:
             """Return the timeout value for a call.
 
@@ -840,7 +847,7 @@ class HyperionClient:
             # The receive task should never be executing a call that uses the
             # AwaitResponseWrapper (as the response is itself handled by the receive
             # task, i.e. partial deadlock). This assertion defends against programmer
-            # error in development of the client iself.
+            # error in development of the client itself.
             assert asyncio.current_task() != hyperion_client._receive_task
 
             tan = await hyperion_client._reserve_tan_slot(kwargs.get(const.KEY_TAN))
@@ -856,8 +863,8 @@ class HyperionClient:
             return response
 
         def __get__(
-            self, instance: "HyperionClient", instancetype: Type["HyperionClient"]
-        ) -> "functools.partial[Coroutine[Any, Any, dict[str, Any] | None]]":
+            self, instance: HyperionClient, instancetype: type[HyperionClient]
+        ) -> functools.partial[Coroutine[Any, Any, dict[str, Any] | None]]:
             """Return a partial call that uses the correct 'self'."""
             # Need to ensure __call__ receives the 'correct' outer
             # 'self', which is 'instance' in this function.
@@ -1500,9 +1507,8 @@ class ThreadedHyperionClient(threading.Thread):
         self,
         host: str,
         port: int = const.DEFAULT_PORT_JSON,
-        default_callback: Union[HyperionCallback, Iterable[HyperionCallback]]
-        | None = None,
-        callbacks: dict[str, Union[HyperionCallback, Iterable[HyperionCallback]]]
+        default_callback: HyperionCallback | Iterable[HyperionCallback] | None = None,
+        callbacks: dict[str, HyperionCallback | Iterable[HyperionCallback]]
         | None = None,
         token: str | None = None,
         instance: int = const.DEFAULT_INSTANCE,
