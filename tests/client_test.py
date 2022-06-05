@@ -85,7 +85,7 @@ async def _exhaust_callbacks(event_loop: asyncio.AbstractEventLoop) -> None:
     """Run the loop until all ready callbacks are executed."""
     loop = cast(asyncio.BaseEventLoop, event_loop)
     while loop._ready:  # type: ignore[attr-defined]
-        await asyncio.sleep(0, loop=loop)
+        await asyncio.sleep(0)
 
 
 class MockStreamReaderWriter:
