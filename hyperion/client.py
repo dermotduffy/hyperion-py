@@ -1622,7 +1622,7 @@ class ResponseOK:
         if not self._response:
             return False
         if not isinstance(self._response, dict):
-            return False
+            return False  # type: ignore[unreachable]
         if not self._response.get(const.KEY_SUCCESS, False):
             return False
         if self._cmd is not None and self._response.get(const.KEY_COMMAND) != self._cmd:
