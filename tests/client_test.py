@@ -776,7 +776,7 @@ async def test_update_priorities(
             "visible": False,
         },
     ]
-    priorities_update = {
+    priorities_update: dict[str, Any] = {
         "command": "priorities-update",
         "data": {"priorities": priorities, "priorities_autoselect": False},
     }
@@ -792,7 +792,7 @@ async def test_update_priorities(
 
     assert hc.priorities == priorities
     assert hc.visible_priority == priorities[0]
-    assert not hc.priorities_autoselect
+    assert not bool(hc.priorities_autoselect)
 
     priorities_update = {
         "command": "priorities-update",
