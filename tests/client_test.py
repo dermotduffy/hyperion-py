@@ -1644,6 +1644,53 @@ async def test_client_handles_network_issues_bad_read(
 
 
 @pytest.mark.asyncio
+async def test_client_handles_network_issues_reply_too_large(
+    event_loop: asyncio.AbstractEventLoop,
+    hyperion_fixture: HyperionFixture,
+) -> None:
+    """Verify a reply over the read limit causes a reconnection."""
+
+    rw = hyperion_fixture.rw
+
+    with patch("asyncio.open_connection", return_value=(rw, rw)):
+        await rw.add_flow(
+            [
+                # StreamReader.readline raises ValueError for a line over its limit
+                ("read", ValueError("Separator is not found, and chunk exceed limit")),
+                ("close", None),
+                ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
+                (
+                    "read",
+                    {**_read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}},
+                ),
+            ]
+        )
+        await _block_until_done(rw)
+
+
+@pytest.mark.asyncio
+async def test_client_connects_with_a_large_read_limit(
+    event_loop: asyncio.AbstractEventLoop,
+) -> None:
+    """Verify replies larger than asyncio's 64 KiB default line limit can be read."""
+    rw = MockStreamReaderWriter(
+        [
+            ("write", {**SERVERINFO_REQUEST, **{"tan": 1}}),
+            ("read", {**_read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 1}}),
+        ]
+    )
+    with patch("asyncio.open_connection", return_value=(rw, rw)) as open_connection:
+        hc = client.HyperionClient(TEST_HOST, TEST_PORT)
+        assert await hc.async_client_connect()
+
+    assert open_connection.call_args.kwargs["limit"] == const.STREAM_READER_LIMIT
+    assert const.STREAM_READER_LIMIT > 2**16
+
+    await rw.add_flow([("close", None)])
+    assert await hc.async_client_disconnect()
+
+
+@pytest.mark.asyncio
 async def test_client_handles_network_issues_unexpected_close(
     event_loop: asyncio.AbstractEventLoop,
     hyperion_fixture: HyperionFixture,

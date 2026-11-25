@@ -123,3 +123,7 @@ DEFAULT_REQUEST_TOKEN_TIMEOUT_SECS = 180
 DEFAULT_ORIGIN = "hyperion-py"
 DEFAULT_PORT_JSON = 19444
 DEFAULT_PORT_UI = 8090
+
+# The server sends each JSON reply on one line. With many LEDs, effects or
+# instances a serverinfo reply is larger than asyncio's default 64 KiB line limit.
+STREAM_READER_LIMIT = 4 * 1024 * 1024
