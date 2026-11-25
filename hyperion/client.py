@@ -327,7 +327,9 @@ class HyperionClient:
         if self._writer:
             return True
 
-        future_streams = asyncio.open_connection(self._host, self._port)
+        future_streams = asyncio.open_connection(
+            self._host, self._port, limit=const.STREAM_READER_LIMIT
+        )
         try:
             self._reader, self._writer = await asyncio.wait_for(
                 future_streams, timeout=self._timeout_secs
@@ -490,6 +492,14 @@ class HyperionClient:
         except asyncio.TimeoutError:
             _LOGGER.warning(
                 "Read from Hyperion timed out (%s), disconnecting ...", self._host_port
+            )
+            await self._async_client_disconnect_internal()
+            return None
+        except ValueError:
+            # asyncio.LimitOverrunError: a reply longer than STREAM_READER_LIMIT. The
+            # rest of that line is still in the stream, so start afresh.
+            _LOGGER.warning(
+                "Reply from Hyperion too large (%s), disconnecting ...", self._host_port
             )
             await self._async_client_disconnect_internal()
             return None
