@@ -100,6 +100,7 @@ class HyperionClient:
         timeout_secs: float = const.DEFAULT_TIMEOUT_SECS,
         retry_secs: int = const.DEFAULT_CONNECTION_RETRY_DELAY_SECS,
         raw_connection: bool = False,
+        heartbeat_secs: float = const.DEFAULT_HEARTBEAT_SECS,
     ) -> None:
         """Initialize client."""
         _LOGGER.debug("HyperionClient initiated with: (%s:%i)", host, port)
@@ -118,6 +119,7 @@ class HyperionClient:
         self._timeout_secs = timeout_secs
         self._retry_secs = retry_secs
         self._raw_connection = raw_connection
+        self._heartbeat_secs = heartbeat_secs
 
         self._serverinfo: dict[str, Any] | None = None
 
@@ -432,7 +434,7 @@ class HyperionClient:
         try:
             writer.close()
             await writer.wait_closed()
-        except ConnectionError as exc:
+        except OSError as exc:
             _LOGGER.warning(
                 "Could not close connection cleanly for Hyperion (%s): %s",
                 self._host_port,
@@ -461,7 +463,7 @@ class HyperionClient:
         try:
             self._writer.write(output)
             await self._writer.drain()
-        except ConnectionError as exc:
+        except OSError as exc:
             _LOGGER.warning(
                 "Could not write data for Hyperion (%s): %s",
                 self._host_port,
@@ -483,8 +485,10 @@ class HyperionClient:
         try:
             future_resp = self._reader.readline()
             resp = await asyncio.wait_for(future_resp, timeout=timeout_secs)
-        except ConnectionError:
-            _LOGGER.warning("Connection to Hyperion lost (%s) ...", self._host_port)
+        except OSError as exc:
+            _LOGGER.warning(
+                "Connection to Hyperion lost (%s): %s", self._host_port, repr(exc)
+            )
             await self._async_client_disconnect_internal()
             return None
         except asyncio.TimeoutError:
@@ -535,7 +539,15 @@ class HyperionClient:
     async def _maintenance_task_loop(self) -> None:
         try:
             while True:
-                await self._maintenance_event.wait()
+                try:
+                    await asyncio.wait_for(
+                        self._maintenance_event.wait(),
+                        timeout=self._heartbeat_secs or None,
+                    )
+                except asyncio.TimeoutError:
+                    await self._async_heartbeat()
+                    continue
+
                 if not self._client_state.get(const.KEY_CONNECTED):
                     if not await self.async_client_connect():
                         _LOGGER.info(
@@ -562,6 +574,21 @@ class HyperionClient:
                 self._host_port,
             )
             raise
+
+    async def _async_heartbeat(self) -> None:
+        """Disconnect (to trigger a reconnect) if the server stops responding.
+
+        A server that disappears without closing the connection (e.g. power loss)
+        is otherwise never noticed, as the client only reads from the socket.
+        """
+        if self._raw_connection or not self._client_state.get(const.KEY_CONNECTED):
+            return
+        if await self.async_sysinfo() is None:
+            _LOGGER.warning(
+                "Hyperion server (%s) did not respond to heartbeat, reconnecting ...",
+                self._host_port,
+            )
+            await self._async_client_disconnect_internal()
 
     async def _receive_task_loop(self) -> None:
         """Run receive task continually."""
@@ -1516,6 +1543,7 @@ class ThreadedHyperionClient(threading.Thread):
         timeout_secs: float = const.DEFAULT_TIMEOUT_SECS,
         retry_secs: int = const.DEFAULT_CONNECTION_RETRY_DELAY_SECS,
         raw_connection: bool = False,
+        heartbeat_secs: float = const.DEFAULT_HEARTBEAT_SECS,
     ) -> None:
         """Initialize client."""
         super().__init__()
@@ -1533,6 +1561,7 @@ class ThreadedHyperionClient(threading.Thread):
             timeout_secs=timeout_secs,
             retry_secs=retry_secs,
             raw_connection=raw_connection,
+            heartbeat_secs=heartbeat_secs,
         )
         self._client_init_event = threading.Event()
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+import errno
 import inspect
 import json
 import logging
@@ -330,6 +331,8 @@ async def _create_client_and_connect(
     **kwargs: Any,
 ) -> client.HyperionClient:
     """Create a HyperionClient and connect it."""
+    # Heartbeats would add unexpected traffic to tests that advance the clock.
+    kwargs.setdefault("heartbeat_secs", 0)
     with patch("asyncio.open_connection", return_value=(rw, rw)):
         hc = client.HyperionClient(
             TEST_HOST,
@@ -1707,6 +1710,125 @@ async def test_client_handles_network_issues_bad_read_cannot_reconnect_ads(
             )
             await advance_time((const.DEFAULT_CONNECTION_RETRY_DELAY_SECS / 2) + 1)
             await _block_until_done(rw)
+
+
+@pytest.mark.asyncio
+async def test_client_write_and_close_handles_os_error(
+    event_loop: asyncio.AbstractEventLoop,
+    rw: MockStreamReaderWriter,
+) -> None:
+    """Verify non-ConnectionError OSErrors (e.g. host unreachable) are handled."""
+    hc = await _create_client_and_connect(rw)
+    unreachable = OSError(errno.EHOSTUNREACH, "Host is unreachable")
+
+    await rw.add_flow([("write", unreachable)])
+    assert not await hc.async_send_image_stream_start()
+
+    await rw.add_flow([("close", unreachable)])
+    assert not await hc.async_client_disconnect()
+
+    await rw.assert_flow_finished()
+
+
+@pytest.mark.asyncio
+async def test_client_handles_network_issues_os_error_on_read(
+    event_loop: asyncio.AbstractEventLoop,
+    hyperion_fixture: HyperionFixture,
+) -> None:
+    """Verify a non-ConnectionError OSError on read causes a reconnection."""
+    (rw, hc) = hyperion_fixture.rw, hyperion_fixture.hc
+    unreachable = OSError(errno.EHOSTUNREACH, "Host is unreachable")
+
+    with patch("asyncio.open_connection", return_value=(rw, rw)):
+        await rw.add_flow(
+            [
+                ("read", unreachable),
+                ("close", None),
+                ("write", {**SERVERINFO_REQUEST, **{"tan": 2}}),
+                (
+                    "read",
+                    {**_read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 2}},
+                ),
+            ]
+        )
+        await _block_until_done(rw)
+    assert hc.is_connected
+
+
+@pytest.mark.asyncio
+async def test_client_heartbeat_server_responds(
+    event_loop: asyncio.AbstractEventLoop,
+    advance_time: EventLoopClockAdvancer,
+    rw: MockStreamReaderWriter,
+) -> None:
+    """Verify a responsive server keeps the connection open."""
+    hc = await _create_client_and_connect(
+        rw, heartbeat_secs=const.DEFAULT_HEARTBEAT_SECS
+    )
+
+    await rw.add_flow(
+        [
+            ("write", {"command": "sysinfo", "tan": 2}),
+            ("read", {**TEST_SYSINFO_RESPONSE, **{"tan": 2}}),
+        ]
+    )
+    await advance_time(const.DEFAULT_HEARTBEAT_SECS + 1)
+    await _block_until_done(rw)
+    assert hc.is_connected
+
+    await _disconnect_and_assert_finished(rw, hc)
+
+
+@pytest.mark.asyncio
+async def test_client_heartbeat_server_unresponsive(
+    event_loop: asyncio.AbstractEventLoop,
+    advance_time: EventLoopClockAdvancer,
+    rw: MockStreamReaderWriter,
+) -> None:
+    """Verify an unresponsive server (e.g. after power loss) causes a reconnection."""
+    hc = await _create_client_and_connect(
+        rw, heartbeat_secs=const.DEFAULT_HEARTBEAT_SECS
+    )
+
+    with patch("asyncio.open_connection", return_value=(rw, rw)):
+        await rw.add_flow([("write", {"command": "sysinfo", "tan": 2})])
+        await advance_time(const.DEFAULT_HEARTBEAT_SECS + 1)
+        await rw.block_until_flow_empty()
+        assert hc.is_connected
+
+        await rw.add_flow(
+            [
+                ("close", None),
+                ("write", {**SERVERINFO_REQUEST, **{"tan": 3}}),
+                (
+                    "read",
+                    {**_read_file(FILE_SERVERINFO_RESPONSE), **{"tan": 3}},
+                ),
+            ]
+        )
+        await advance_time(const.DEFAULT_TIMEOUT_SECS + 1)
+        await _block_until_done(rw)
+    assert hc.is_connected
+
+    await _disconnect_and_assert_finished(rw, hc)
+
+
+@pytest.mark.asyncio
+async def test_client_heartbeat_skipped_for_raw_connection(
+    event_loop: asyncio.AbstractEventLoop,
+    advance_time: EventLoopClockAdvancer,
+) -> None:
+    """Verify no heartbeat is sent on a raw connection."""
+    rw = MockStreamReaderWriter()
+    hc = await _create_client_and_connect(
+        rw, raw_connection=True, heartbeat_secs=const.DEFAULT_HEARTBEAT_SECS
+    )
+
+    await advance_time(const.DEFAULT_HEARTBEAT_SECS + 1)
+    await rw.assert_flow_finished()
+    assert hc.is_connected
+
+    await _disconnect_and_assert_finished(rw, hc)
 
 
 @pytest.mark.asyncio

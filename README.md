@@ -52,6 +52,7 @@ The following arguments may be passed to the `HyperionClient` constructor:
 |origin|`str`|"hyperion-py"|An arbitrary string describing the calling application|
 |timeout_secs|`float`|5.0|The number of seconds to wait for a server response or connection attempt before giving up. See [timeouts](#timeouts)|
 |retry_secs|`float`|30.0|The number of seconds between connection attempts|
+|heartbeat_secs|`float`|30.0|How often, in seconds, the client checks that a connected server is still responding (reconnecting if not). `0` disables the check|
 |raw_connection|`bool`|False|If True, the connect call will establish the network connection but not attempt to authenticate, switch to the required instance or load state. The client must call `async_client_login` to login, `async_client_switch_instance` to switch to the configured instance and `async_get_serverinfo` to load the state manually. This may be useful if the caller wishes to communicate with the server prior to authentication.|
 
 ### Connection, disconnection and client control calls
